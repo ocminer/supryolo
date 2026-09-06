@@ -1,0 +1,90 @@
+name: Publish v0.1.0 release
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-v0.1.0
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: v0.1.0
+      - name: Build and test tagged Linux source
+        run: |
+          set -euo pipefail
+          docker build -t supryolo-builder:12.8 -f packaging/linux/Dockerfile.build .
+          docker run --rm --entrypoint bash -v "$GITHUB_WORKSPACE:/src" -w /src supryolo-builder:12.8 -c '
+            cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90;120" \
+              -DOPENSSL_USE_STATIC_LIBS=TRUE \
+              -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc" \
+              -DCMAKE_CXX_FLAGS="-ffile-prefix-map=/src=. -fdebug-prefix-map=/src=."
+            cmake --build build-release -j 2
+            ctest --test-dir build-release --output-on-failure'
+          # Match the exact binary already validated on real GPUs and B2Pool.
+          echo '4bdde9fef55c8868be141851487ef1cb1621b9439bc63786c85d132dd0c798b7  build-release/supryolo' | sha256sum -c -
+      - name: Package Linux and rig OS assets with runtime notices
+        run: |
+          set -euo pipefail
+          mkdir -p dist/runtime
+          docker run --rm --entrypoint cat supryolo-builder:12.8 /usr/share/doc/libssl-dev/copyright > dist/runtime/OpenSSL.txt
+          docker run --rm --entrypoint cat supryolo-builder:12.8 /usr/share/doc/gcc-11-base/copyright > dist/runtime/GCC.txt
+          docker run --rm --entrypoint cat supryolo-builder:12.8 /usr/share/doc/cuda-cudart-12-8/copyright > dist/runtime/CUDA.txt
+          export RUNTIME_LICENSE_DIR="$PWD/dist/runtime"
+          for flavor in linux-x86_64 hiveos mmpos; do
+            scripts/package-linux.sh build-release/supryolo "$PWD/dist" "$flavor"
+          done
+      - name: Retrieve tested Windows CI package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 34059768082 --repo ocminer/supryolo --name supryolo-windows --dir dist
+          cd dist
+          sha256sum -c WINDOWS-SHA256SUMS
+      - name: Export the tested public Docker image
+        run: |
+          set -euo pipefail
+          IMAGE=ocminersupr/supryolo@sha256:c15299466ea0a5ed1c9234cd76b2af3d0b7c07536acb5f4c2abc53265a2993ed
+          docker pull "$IMAGE"
+          docker tag "$IMAGE" ocminersupr/supryolo:0.1.0
+          docker run --rm --entrypoint sha256sum "$IMAGE" /opt/supryolo/supryolo | \
+            grep '^80b674bbc7856d6eee6a690fc1d693a02f07c432a10e53f43e55a440a4c6a795 '
+          docker save ocminersupr/supryolo:0.1.0 | gzip -1 > dist/supryolo-0.1.0-docker.tar.gz
+      - name: Publish assets and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum *.tar.gz *.zip > SHA256SUMS
+          cat > release-notes.md <<'NOTES'
+          First binary release of supryolo for BTCB2 BLAKE2b mining.
+
+          - Linux: NVIDIA CUDA, AMD OpenCL and AVX2/scalar CPU in one executable.
+          - HiveOS and mmpOS custom-miner packages with local monitoring API and stats adapters.
+          - Docker: `ocminersupr/supryolo:0.1.0`, plus an offline image archive.
+          - Windows: GitHub-CI-built OpenCL/CPU package, including required DLLs.
+          - Matrix terminal, device selection, supported GPU controls and temperature alarms.
+          - `start.sh` / `start.cmd`: replace `YOUR_BTCB2_ADDRESS` to start on B2Pool.
+
+          Measured RTX 5090 live rate: **17.22 GH/s**. RX 7900 XTX: **5.783 GH/s** in the documented live sample. See the README for all measured hardware.
+
+          [Installation and examples](https://github.com/ocminer/supryolo/blob/v0.1.0/docs/RELEASES.md) · [README](https://github.com/ocminer/supryolo/blob/v0.1.0/README.md)
+
+          Linux requires x86-64 and glibc 2.35+, with NVIDIA driver 570.124.06+ or an AMD OpenCL runtime. Windows targets Windows 10/11 x86-64 and uses OpenCL rather than CUDA. Docker supports NVIDIA/CPU; use native Linux on AMD rigs.
+
+          Linux tests, GPU hash checks and 95/95 new live pool shares passed. Windows CI passed CPU protocol/API tests and standalone package checks. Physical Windows GPUs and complete installed HiveOS/mmpOS deployments have not yet been validated. Temperature alarms do not stop or throttle mining. Block candidates are not confirmed network blocks.
+
+          User agent: **`supryolo/0.1.0`**. Private mining with profits is permitted; commercial use requires prior written permission from ocminer. See LICENSE; dependencies retain their own terms.
+
+          Verify downloads against `SHA256SUMS`. Import the offline Docker archive with `gzip -dc supryolo-0.1.0-docker.tar.gz | docker load`.
+          NOTES
+          gh release create v0.1.0 --repo ocminer/supryolo --verify-tag --title 'supryolo v0.1.0' \
+            --notes-file release-notes.md *.tar.gz *.zip SHA256SUMS
