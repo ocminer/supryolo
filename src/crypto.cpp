@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: LicenseRef-Supryolo-NC-1.0
 // Scalar reference implementation of the BLAKE2b specification (RFC 7693).
 #include "yolo/core.hpp"
 #include <algorithm>

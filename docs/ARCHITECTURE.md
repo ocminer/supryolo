@@ -19,8 +19,9 @@ network state inside hash kernels or board drivers.
 The current first-party code implements the BLAKE2b specification independently;
 it does not incorporate the legacy miners' application code. Any future reuse
 must retain source notices and satisfy the specific component's license. In
-particular, GPL miner code cannot simply be copied into this MIT codebase and
-have its notices removed. Re-evaluate the project license before such reuse.
+particular, GPL miner code cannot simply be incorporated under this project's
+noncommercial license. Review license compatibility before such reuse; keeping
+notices alone does not resolve incompatible terms. See [LICENSE](../LICENSE).
 
 ## Modules
 

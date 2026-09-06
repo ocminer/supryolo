@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: LicenseRef-Supryolo-NC-1.0
 #define CL_TARGET_OPENCL_VERSION 120
 #include "opencl_kernel.hpp"
 #include "yolo/core.hpp"

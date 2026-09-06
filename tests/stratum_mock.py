@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: LicenseRef-Supryolo-NC-1.0
 """Local protocol integration test. No external pool or wallet is used."""
 import hashlib,json,socket,subprocess,sys,threading,time
 from fractions import Fraction

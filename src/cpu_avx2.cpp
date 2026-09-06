@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: LicenseRef-Supryolo-NC-1.0
 // Four independent 80-byte BLAKE2b-256 messages, following RFC 7693.
 // Written for supryolo; the scalar implementation remains the independent oracle.
 #include "yolo/core.hpp"

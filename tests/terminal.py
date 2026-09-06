@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: LicenseRef-Supryolo-NC-1.0
 """Exercise the real TUI in a PTY without opening a mining device or pool."""
 import fcntl
 import os

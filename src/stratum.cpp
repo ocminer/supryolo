@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: LicenseRef-Supryolo-NC-1.0
 #include "yolo/stratum.hpp"
 #include <stdexcept>
 namespace yolo {

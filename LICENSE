@@ -1,16 +1,67 @@
-MIT License
+supryolo Noncommercial and Personal Mining License 1.0
+SPDX-License-Identifier: LicenseRef-Supryolo-NC-1.0
 
 Copyright (c) 2026 ocminer
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Scope
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This license applies to the first-party supryolo software and documentation,
+including source code, binaries, modifications and portions of them (the
+"Software"). Third-party components retain their separate licenses and are
+not subject to these restrictions. See THIRD_PARTY.md.
+
+2. Permitted use
+
+Subject to the conditions below, permission is granted, free of charge, to
+use, copy, study, modify and distribute the Software for noncommercial
+purposes. Noncommercial sharing of original or modified source and binaries
+is permitted.
+
+Private individuals may also use and modify the Software to mine
+cryptocurrency for their own personal account, including earning, keeping
+and selling mining rewards. Earning a profit from such personal mining does
+not, by itself, make it commercial use under this license. This exception
+does not cover operating a mining business, mining on behalf of a business,
+or providing mining or hosting services to others for compensation.
+
+3. Commercial use requires prior written permission
+
+Any commercial use of the Software, in whole or in part, requires prior
+written permission from ocminer. This includes, without limitation:
+
+- use in a business or commercial mining operation;
+- selling, licensing for a fee, renting or commercially distributing the
+  Software, whether original or modified;
+- embedding, preinstalling, bundling or integrating the Software in hardware,
+  firmware, appliances or other products offered commercially, even when
+  the Software is not separately charged for;
+- incorporating any portion of the Software into a commercial software
+  product or service, or providing paid mining or hosting services using it.
+
+No commercial permission is implied by public availability of the source,
+by a free download, or by the absence of a reply to a request. Request
+permission from ocminer through https://github.com/ocminer/supryolo/issues
+with the subject "Commercial licensing request". Permission is effective
+only when expressly granted in writing by ocminer for the proposed use.
+
+4. Notices and redistribution
+
+Keep this license and all applicable copyright and third-party notices with
+all copies and distributions of the Software, including binaries and copied
+portions. Identify modifications as such. Recipients receive permission to
+use the Software under this license; you may not grant rights to the
+Software that this license does not grant. This license does not require
+you to publish your modifications or source code.
+
+5. Previously granted rights and legal exceptions
+
+This license does not revoke or restrict permissions already granted for
+versions or portions previously distributed under the MIT License or another
+license. Those copies and portions remain usable under their original
+terms. This license does not restrict uses permitted by applicable law
+without the copyright holder's permission. Rights not granted are reserved.
+
+6. Disclaimer
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,

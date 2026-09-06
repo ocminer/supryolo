@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: LicenseRef-Supryolo-NC-1.0
 // Test-only library. Never installed or linked into the miner.
 #include <cstring>
 struct Device {

@@ -1,6 +1,6 @@
 # supryolo
 
-A modular, open-source BTCB2 BLAKE2b miner by **ocminer**.
+A modular, source-available BTCB2 BLAKE2b miner by **ocminer**.
 
 **Development preview.** NVIDIA CUDA, AMD OpenCL, runtime-dispatched AVX2 CPU mining,
 BTCB2 Stratum, GPU monitoring/control and a Matrix-style terminal dashboard
@@ -13,6 +13,9 @@ Direct-node RPC solo mining and FPGA backends are planned.
 Pool solo ports already use the same Stratum client.
 
 ![Matrix terminal demo; all displayed mining values are simulated](docs/assets/tui-demo.png)
+
+[Build](#build) · [Quick start](#quick-start) · [Performance](#performance) ·
+[Command examples](#command-examples) · [Common mistakes](#common-mistakes)
 
 ## Build
 
@@ -52,42 +55,49 @@ selection uses CUDA for NVIDIA and OpenCL for AMD. `--gpu-backend cuda` or
 used for OpenCL diagnostics on NVIDIA. Use `--list-devices` with the same
 backend option to see the corresponding device indices.
 
-## Run
+## Quick start
 
-Replace `YOUR_BTCB2_ADDRESS` with your BTCB2 payout address. GPU 0 only:
+All commands below assume the combined binary is `./build/supryolo` and are
+run from the source directory. If you built another configuration, substitute
+`./build-opencl/supryolo` or `./build-cpu/supryolo`. If the executable is in your
+current directory, use `./supryolo` instead.
+
+**First identify your GPUs; do not guess their numbers:**
+
+```sh
+./build/supryolo --list-devices
+```
+
+Device numbers start at **0**. Use the number printed after `GPU`.
+Replace `YOUR_BTCB2_ADDRESS` below with your BTCB2 payout address. Keep `.rig1`
+or replace it with your own worker name, for example `.garage`.
+
+**Start GPU 0 only, with CPU mining disabled:**
 
 ```sh
 ./build/supryolo --url stratum+tcp://de.b2pool.io:4444 \
   --user YOUR_BTCB2_ADDRESS.rig1 --gpu-device 0 --no-cpu
 ```
 
-`--gpu-device 0,1` selects GPUs 0 and 1; omitted means **all visible GPUs**.
-CPU mining is also enabled by default. `--no-cpu` disables CPU hashing;
-`--no-gpu` disables GPUs. Giving both flags reports that no devices are enabled.
-Selected devices share a connection with separate nonce ranges.
+Copy the entire command. A backslash `\` continues the command on the next
+line; do not put spaces after it. Press `q` in the TUI or `Ctrl+C` to stop.
 
-CPU-only mining on the low-difficulty port:
+**Defaults matter:** without `--gpu-device`, all discovered GPUs are used.
+Without `--no-cpu`, CPU mining is enabled too. No clock, power or fan setting
+is changed unless its control flag is supplied. Previously applied settings
+remain active until explicitly reset.
 
-```sh
-./build/supryolo --no-gpu --cpu-threads 15 \
-  --url stratum+tcp://de.b2pool.io:5555 --user YOUR_BTCB2_ADDRESS.cpu1
-```
+| B2Pool mode | Port | Example endpoint |
+|---|---:|---|
+| GPU shared mining | 4444 | `stratum+tcp://de.b2pool.io:4444` |
+| CPU shared mining | 5555 | `stratum+tcp://de.b2pool.io:5555` |
+| GPU pool-solo | 4445 | `stratum+tcp://de.b2pool.io:4445` |
+| CPU pool-solo | 5556 | `stratum+tcp://de.b2pool.io:5556` |
 
-AVX2 is selected automatically when available; other CPUs use the scalar kernel.
-Choose a thread count suitable for your CPU, or omit it for automatic selection.
-B2Pool GPU pool-solo uses **4445**, CPU pool-solo **5556**. Direct-node RPC
-`getblocktemplate` / `submitblock` is a separate planned job source.
-
-The TUI starts in an interactive terminal. Use `--no-tui` for plain output,
-`--list-devices` to inspect hardware, or `--tui-demo` for a display-only preview.
-GPU controls include `--gpu-core-clock`, `--gpu-mem-clock`, `--powerlimit` and
-`--gpu-fan-speed`. Settings change only when explicitly supplied.
-Read [device selection, controls and TUI operation](docs/OPERATIONS.md) for
-units, per-device lists, reset behavior and temperature alarms.
-
-`--seconds 120` limits a run; `--password x` is the default. TLS is available
-with `stratum+tls://` or `stratum+ssl://` when supported by the endpoint, with
-certificate and hostname verification. B2Pool's listed ports use plain TCP.
+Pool-solo still connects to a pool. Direct-node RPC solo is not implemented.
+`--password x` is the default. The listed B2Pool ports use plain TCP; do not
+change them to TLS URLs. Other endpoints can use `stratum+tls://` or
+`stratum+ssl://` when they support TLS; certificate verification is enabled.
 
 User agent: `supryolo/0.1.0-dev`.
 
@@ -129,8 +139,273 @@ Larger batches can increase job-switch latency. Every GPU/AVX2 candidate is
 independently rehashed and checked against the full 256-bit target before
 submission. GPU candidate-buffer overflow is an explicit error.
 
+## Command examples
+
+### Choose exactly which devices mine
+
+**All GPUs, no CPU:**
+
+```sh
+./build/supryolo --url stratum+tcp://de.b2pool.io:4444 \
+  --user YOUR_BTCB2_ADDRESS.all-gpus --no-cpu
+```
+
+**GPU 1 only:** GPU 0 and every other GPU are excluded.
+
+```sh
+./build/supryolo --url stratum+tcp://de.b2pool.io:4444 \
+  --user YOUR_BTCB2_ADDRESS.second-card --gpu-device 1 --no-cpu
+```
+
+**GPUs 0 and 2 only:** leave GPU 1 free, for example for the desktop or another
+application. This example requires a listed GPU 2. Any other GPU is excluded.
+
+```sh
+./build/supryolo --url stratum+tcp://de.b2pool.io:4444 \
+  --user YOUR_BTCB2_ADDRESS.selected --gpu-device 0,2 --no-cpu
+```
+
+Use a comma-separated list **without spaces**. `-d 0,2` is an alias for
+`--gpu-device 0,2`. There is no separate exclusion flag: list the GPUs you
+want to use. The miner does not stop an application already using a card.
+
+**GPU 0 plus four CPU threads:**
+
+```sh
+./build/supryolo --url stratum+tcp://de.b2pool.io:4444 \
+  --user YOUR_BTCB2_ADDRESS.mixed --gpu-device 0 --cpu-threads 4
+```
+
+**CPU only, four threads:** all GPUs are disabled. Use the CPU pool port.
+
+```sh
+./build/supryolo --url stratum+tcp://de.b2pool.io:5555 \
+  --user YOUR_BTCB2_ADDRESS.cpu --no-gpu --cpu-threads 4
+```
+
+`--cpu-threads 0` means automatic thread selection, not CPU off. Omit
+`--cpu-threads` for the same automatic behavior. AVX2 is selected automatically
+when available; `--cpu-variant scalar` forces the portable reference kernel.
+Do not combine `--no-gpu` with `--gpu-device`. Giving both `--no-cpu` and
+`--no-gpu` exits with a no-devices error.
+
+### NVIDIA, AMD and mixed rigs
+
+The default `--gpu-backend auto` uses CUDA for NVIDIA and OpenCL for AMD,
+including both vendors if present. Device numbers are assigned to that list.
+
+To use **only CUDA/NVIDIA**, inspect and mine with the same backend option:
+
+```sh
+./build/supryolo --gpu-backend cuda --list-devices
+./build/supryolo --gpu-backend cuda --gpu-device 0 --no-cpu \
+  --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.nvidia
+```
+
+On an **AMD-only rig**, the ordinary quick-start command already selects
+OpenCL automatically. You can also select it explicitly:
+
+```sh
+./build/supryolo --gpu-backend opencl --list-devices
+./build/supryolo --gpu-backend opencl --gpu-device 0 --no-cpu \
+  --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.amd
+```
+
+**Changing the backend can change GPU numbers.** Always use the same backend
+option for `--list-devices` and mining. Explicit `opencl` is an API selection,
+not an AMD-only filter: it can expose NVIDIA OpenCL devices too. On a mixed
+rig, use `auto`, inspect the names and select the desired numbers.
+`CUDA_VISIBLE_DEVICES` can also change CUDA numbering.
+
+### Frequencies, power and fans on NVIDIA
+
+Units are **MHz** for clocks, **watts** for power and **percent** for fans.
+Clock values are absolute values, not offsets. Memory clocks use driver units,
+which can differ from advertised memory data rates. Control writes may need
+root, so these examples use `sudo`; ordinary mining does not require it.
+
+**Example for an RTX 5090 listed as CUDA GPU 0:** 2400 MHz core, 10001 MHz
+memory, 500 W power limit and 70% fan. These are supported syntax examples,
+not a universal performance recommendation. Do not copy a 5090 power limit
+onto a different model; the driver rejects values outside its supported range.
+
+```sh
+sudo ./build/supryolo --gpu-backend cuda --gpu-device 0 --no-cpu \
+  --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.tuned \
+  --gpu-core-clock 2400 --gpu-mem-clock 10001 --powerlimit 500 \
+  --gpu-fan-speed 70 --gpu-temp-warn 75 --gpu-temp-alarm 85
+```
+
+**Different settings for two RTX 5090s:** values follow the order in
+`--gpu-device`, not numeric GPU order. Here that order is **1, then 0**:
+
+```sh
+sudo ./build/supryolo --gpu-backend cuda --gpu-device 1,0 --no-cpu \
+  --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.two-cards \
+  --gpu-core-clock 2400,2500 --gpu-mem-clock 10001 \
+  --powerlimit 450,500 --gpu-fan-speed 70,75
+```
+
+| Selected GPU | Core | Memory | Power limit | Fan |
+|---|---:|---:|---:|---:|
+| GPU 1 — first in the list | 2400 MHz | 10001 MHz | 450 W | 70% |
+| GPU 0 — second in the list | 2500 MHz | 10001 MHz | 500 W | 75% |
+
+A single value, such as `--gpu-mem-clock 10001`, applies to every selected
+GPU. Otherwise, supply exactly one value per selected GPU. Unselected GPUs
+are neither mined on nor configured by these flags.
+
+### AMD clock and power examples
+
+AMD clock values must match **existing driver-advertised DPM levels**. The
+miner does not enable overdrive or accept arbitrary clock offsets. Available
+levels vary by card and driver. To inspect them, replace this example PCI
+address with the address shown for your AMD card by `--list-devices`:
+
+```sh
+SUPRYOLO_AMD_PCI=0000:03:00.0
+cat "/sys/bus/pci/devices/${SUPRYOLO_AMD_PCI}/pp_dpm_sclk"
+cat "/sys/bus/pci/devices/${SUPRYOLO_AMD_PCI}/pp_dpm_mclk"
+```
+
+The files show level numbers and MHz values. Pass the **MHz value**, not the
+level number. The miner selects that DPM level; load and thermal/power limits
+can still change the actual operating frequency.
+
+**Example for an AMD-only rig whose GPU 0 is an RX 7600 XT**, when its driver
+advertises 2539 MHz core and 1124 MHz memory and permits a 155 W cap:
+
+```sh
+sudo ./build/supryolo --gpu-device 0 --no-cpu \
+  --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.amd-tuned \
+  --gpu-core-clock 2539 --gpu-mem-clock 1124 --powerlimit 155
+```
+
+Manual AMD fan writes were rejected by the tested RDNA drivers even as root.
+Leave the fan setting omitted for automatic operation on those systems.
+`--gpu-fan-speed 0` explicitly restores automatic fan control. A rejected
+manual PWM write restores the previous fan policy and reports the error.
+Power/clock settings applied earlier in the same command can remain active.
+See [AMD driver details](docs/OPERATIONS.md#amd-specifics).
+
+### Reset settings after tuning
+
+**Omitting a control flag does not undo a previous setting.** Use `0` to reset
+it. This command resets CUDA GPU 0 and runs a one-second local benchmark;
+it does not connect to a pool:
+
+```sh
+sudo ./build/supryolo --gpu-backend cuda --gpu-device 0 --no-cpu \
+  --benchmark --seconds 1 --gpu-core-clock 0 --gpu-mem-clock 0 \
+  --powerlimit 0 --gpu-fan-speed 0
+```
+
+For AMD, use the backend and GPU number from your AMD device listing instead.
+On AMD, resetting **either clock** restores **both clock domains** to automatic
+mode; do not combine a zero clock reset with a nonzero clock setting.
+On NVIDIA, the two clock resets are independent. Power `0` restores the card's
+default limit, not a previously customized limit. Fan `0` means **automatic**,
+not a stopped fan.
+
+### Temperature alarms and display
+
+**These are alarm thresholds, not enforced temperature limits.** They change
+colors and produce events; they do not stop mining, reduce clocks or set the
+fan automatically. There is currently no automatic temperature-cutoff flag.
+
+This example warns at **70°C** and shows a red **2 Hz blinking ALARM at 80°C**:
+
+```sh
+./build/supryolo --gpu-device 0 --no-cpu --tui \
+  --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.monitored \
+  --gpu-temp-warn 70 --gpu-temp-alarm 80
+```
+
+The default thresholds are 75°C and 85°C. The warning must be lower than the
+alarm. These two settings apply to every displayed GPU; they do not accept
+per-GPU comma-separated lists. Fix cooling or explicitly reduce supported
+power/clock settings if a device gets too hot.
+
+The TUI shows connection details, accepted/rejected/stale shares, per-device
+rates and sensors, plus share responses and difficulty changes. `q` stops
+mining; `j`/`k` scroll devices. Missing sensors display `--`.
+`--tui-demo --seconds 10` previews the display without mining or configuring
+hardware. The displayed block count means **block candidates**, not confirmed
+network blocks.
+
+**Five-minute run with plain logs saved to a file:**
+
+```sh
+./build/supryolo --gpu-device 0 --no-cpu --no-tui --seconds 300 \
+  --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.logged \
+  2>&1 | tee supryolo.log
+```
+
+`--seconds` limits the run duration. Redirected output always uses plain logs.
+
+### Benchmark and batch-size examples
+
+Benchmarks hash locally and need no pool or payout address. Do not combine
+`--benchmark` with `--url`. Specify devices and `--no-cpu` when measuring a GPU.
+
+**NVIDIA GPU 0, explicit CUDA settings:**
+
+```sh
+./build/supryolo --benchmark --gpu-backend cuda --gpu-device 0 --no-cpu \
+  --seconds 30 --variant 3 --block 256 --batch 67108864
+```
+
+**AMD GPU 0, smaller batch for comparison:**
+
+```sh
+./build/supryolo --benchmark --gpu-backend opencl --gpu-device 0 --no-cpu \
+  --seconds 30 --opencl-variant 3 --block 64 --batch 16777216
+```
+
+Variant 3 requires the AMD media-operations extension; omit the variant flag
+for automatic selection. CUDA uses `--variant`; OpenCL uses
+`--opencl-variant`. `--batch` is hashes per GPU scan, `--block` is threads per
+workgroup/block, and `--cpu-batch` controls CPU scans. A larger batch is not
+necessarily faster and can delay switching to a new pool job. Change one
+setting at a time and compare repeated measurements after warm-up.
+
+## Common mistakes
+
+| Symptom or question | What to check |
+|---|---|
+| The CPU is busy although I selected a GPU | Add `--no-cpu`; GPU selection does not disable CPU mining. |
+| More GPUs are mining than intended | Supply `--gpu-device` with only the wanted indices; omission selects all. |
+| I want to skip GPU 1 | For example, use `--gpu-device 0,2`; there is no exclusion flag. |
+| A different GPU is selected after changing the backend | Run `--list-devices` with the same backend option you will mine with. |
+| A comma-separated option fails | Remove spaces and supply either one value or one per selected GPU. |
+| Does a zero clock/fan value disable a GPU? | No. It resets that control. Exclude the GPU from `--gpu-device` instead. |
+| Controls fail with a permission error | They may need root; use `sudo` only when applying supported settings. |
+| Controls fail with `Invalid argument` or unsupported-operation errors | Verify the card's supported values and driver capabilities. Root does not add missing driver support. |
+| AMD rejects a frequency | Use an advertised DPM MHz value, not a level index or clock offset. |
+| The temperature alarm flashes but mining continues | Alarms are visual/log warnings; no automatic thermal cutoff is implemented. |
+| I removed tuning flags but the settings remain | Explicitly reset the settings with `0`, or use your rig-management tool. |
+| It exits with “No mining devices enabled” | Do not disable both CPU and GPU engines. |
+
+For the complete driver behavior, read [operations](docs/OPERATIONS.md).
+
 See [architecture](docs/ARCHITECTURE.md) and [third-party notices](THIRD_PARTY.md).
 
 ## License
 
-MIT. Copyright (c) 2026 ocminer. Dependencies retain their own notices.
+[supryolo Noncommercial and Personal Mining License 1.0](LICENSE).
+Copyright (c) 2026 ocminer.
+
+- **Private mining is allowed, including earning and selling mining rewards.**
+- Noncommercial use, modification and sharing of source or binaries are allowed
+  with the license and notices retained.
+- **Commercial use requires prior written permission from ocminer**, including
+  business mining, paid services, selling or commercially distributing the
+  miner, embedding it in hardware sold to customers, and using even part of
+  its code in commercial products. Bundling it for free with a paid product
+  also requires permission.
+
+Request permission through a [commercial licensing issue](https://github.com/ocminer/supryolo/issues/new?title=Commercial%20licensing%20request).
+The full license defines the terms. This is a source-available license, not
+MIT or an OSI-approved open-source license. Previously granted MIT rights
+for earlier versions or portions remain unaffected. Dependencies retain their
+own licenses; see [third-party notices](THIRD_PARTY.md).
