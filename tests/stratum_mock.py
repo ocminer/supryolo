@@ -57,9 +57,10 @@ else:cmd+=['--no-cpu']
 if '--devices' in sys.argv:
  cmd+=['--gpu-device',sys.argv[sys.argv.index('--devices')+1]]
 elif not cpu and '--all-visible' not in sys.argv:cmd+=['--gpu-device','0']
+if '--opencl' in sys.argv:cmd+=['--gpu-backend','opencl']
 p=subprocess.run(cmd,text=True,capture_output=True,timeout=15);thread.join(10);listener.close()
 assert p.returncode==0,(p.returncode,p.stderr,p.stdout[-1000:])
 assert not errors,errors
 assert accepted>0 and epochs==1,(accepted,epochs,p.stderr,p.stdout[-1000:])
 if mixed:assert 0 in prefixes and any(x>0 for x in prefixes),prefixes
-print(f'PASS {"mixed CPU/CUDA" if mixed else "CPU" if cpu else "CUDA"} Stratum: {accepted} independently verified shares; extranonce change with reused job ID; {stale} in-flight stale')
+print(f'PASS {"mixed CPU/CUDA" if mixed else "CPU" if cpu else "OpenCL" if "--opencl" in sys.argv else "CUDA"} Stratum: {accepted} independently verified shares; extranonce change with reused job ID; {stale} in-flight stale')

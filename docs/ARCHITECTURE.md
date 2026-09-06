@@ -31,7 +31,9 @@ have its notices removed. Re-evaluate the project license before such reuse.
   compiled out for CPU-only builds.
 - `yolo_network`: connection lifecycle, verified TLS, worker scheduling,
   share submission and result accounting.
-- `yolo_hardware`: optional NVML telemetry and explicit controls, mapped by PCI bus.
+- `yolo_opencl`: embedded OpenCL kernels and dynamically loaded driver runtime.
+- `yolo_devices`: shared discovery and backend selection across CUDA/OpenCL.
+- `yolo_hardware`: NVML and Linux amdgpu telemetry/controls, mapped by PCI bus.
 - `yolo_ui`: independent dashboard renderer, terminal lifecycle and plain logging.
 - Executable: argument parsing, device inspection and benchmarks.
 
@@ -90,6 +92,26 @@ pool performance. Uniform nonce-word and two/four-nonce thread variants are
 available for measured comparison; they did not improve the default on the
 initial RTX 5090. The measured winner remains the default.
 
+## AMD OpenCL
+
+OpenCL was selected because the tested RDNA 3 and Vega 20 rigs already expose
+working AMD OpenCL runtimes. It supports the required 64-bit integer arithmetic,
+independent command queues and runtime kernel compilation without shipping a
+separate application framework. Vulkan is not required by this implementation.
+
+The OpenCL scan follows the same 80-byte work and full-target validation
+contract as CUDA. Native and AMD-specific rotation variants are independently
+testable. The embedded source avoids missing or mismatched external kernel
+files. Device discovery uses PCI information to map telemetry and avoid mining
+the same card twice when multiple ICDs expose it. Portable kernels remain
+available when the AMD media-operations extension is absent.
+
+The combined executable was run on AMD-only systems as well as the NVIDIA
+host. Either GPU backend can be disabled at build time without forking the
+scheduler, protocol, controls or TUI. The initial OpenCL selection policy
+prefers the first exposed ICD for a physical PCI device; explicit ICD selection
+is a future extension if a system needs alternatives.
+
 ## CPU and device orchestration
 
 The x86-64 AVX2 backend evaluates four independent nonces per vector and dispatches
@@ -111,9 +133,8 @@ Hardware writes occur only for explicit control flags.
    hardware, job changes and reconnects.
 2. Measure additional CPU kernels on supported hardware; AVX2 is implemented,
    while AVX-512 and architecture-specific alternatives need separate validation.
-3. Add AMD OpenCL first if the installed driver/hardware offers a reliable
-   64-bit integer path; evaluate Vulkan against the same workload. Choose using
-   hardware measurements rather than assuming Vulkan is faster.
+3. Extend AMD coverage beyond the tested RDNA 3 and Vega 20 devices. Evaluate
+   additional runtimes or Vulkan only against measured hardware requirements.
 4. Add FPGA transports separately: ZTEX USB/libusb, serial framed links where
    actually supported, and PCIe via the relevant board runtime or DMA driver.
    USB ZTEX access is not synonymous with a generic serial-port protocol.

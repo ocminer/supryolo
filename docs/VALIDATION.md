@@ -11,6 +11,8 @@ These samples do not establish a production failure rate or block acceptance.
   staged difficulty/extranonce updates, reused job IDs and clean jobs.
 - 57,344 complete GPU hashes across seven kernels, randomized headers, the
   32-bit nonce boundary and the end of the 64-bit range.
+- 131,520 complete OpenCL hashes across four AMD cards and four kernel
+  variants, including nonce boundaries, tails, candidate sets and overflow.
 - AVX2 complete hashes compared with the scalar oracle, including incomplete
   four-lane groups, nonce boundaries, candidate sets and exact target equality.
 - Full 256-bit target checks, including rejection based on lower target limbs.
@@ -75,11 +77,55 @@ Real NVML writes were also exercised on the RTX 5090: a 500 W power limit,
 Each test was followed by a successful reset; the initial 600 W power limit
 was restored. The other GPU was not targeted by these control tests.
 
+## AMD live acceptance
+
+The combined CUDA/OpenCL/CPU executable ran unchanged on both AMD-only rigs.
+The initial 90-second acceptance runs used B2Pool port 5555 to collect enough
+shares from every card and exercise difficulty changes:
+
+| Rig configuration | Accepted | Rejected | Stale | Pending |
+|---|---:|---:|---:|---:|
+| RX 7600 XT + two Vega 20 cards | 127 | 0 | 0 | 0 |
+| RX 7900 XTX | 124 | 0 | 0 | 0 |
+
+Independent Python `hashlib` replay verified every submitted hash and assigned
+target. The three-card connection contributed 32, 46 and 49 shares from its
+respective device nonce partitions. Assigned difficulty changed 1 → 32 → 1
+and 1 → 16 → 1 in these runs without invalid submissions.
+
+Combined Release, OpenCL-only Release and CPU-only Release configurations are
+covered by CTest; sanitizer checks also cover the host code. Local OpenCL
+Stratum regression on NVIDIA validated 1,278 shares with one deliberately
+in-flight stale; the unchanged CUDA path validated 1,395 with one such stale.
+AMD control fixtures cover prevalidation, units, resets and restoring the fan
+policy after a failed PWM write. Real RDNA power/clock writes and resets passed;
+manual fan writes are unsupported on the tested drivers, as documented in
+[operations](OPERATIONS.md).
+
+The subsequent runs on the regular GPU port (4444, difficulty 128) produced:
+
+| Rig configuration | Duration | Scanned rate | Accepted | Rejected / stale / pending |
+|---|---:|---:|---:|---:|
+| RX 7900 XTX | 300.100 s | 5.783 GH/s | 4 | 0 / 0 / 0 |
+| RX 7600 XT + two Vega 20 cards | 282.327 s | 6.450 GH/s combined | 3 | 0 / 0 / 0 |
+
+The three-card run was stopped early when one Vega 20 reached 85°C and its
+rate dropped to about 1.9 GH/s. This is a cooling/performance limitation of the
+observed run, not a rejected-hash result. Its shorter 2.75 GH/s benchmark
+must not be presented as a sustained rate. No clock, fan or power changes
+were applied during either live mining run.
+
+Across both ports, **258/258 AMD shares were accepted and independently
+verified**, with no rejects, stale responses or unanswered submissions. Every
+card submitted accepted shares in the low-difficulty run. No network block
+was found, so block acceptance remains outside these observations.
+
 ## Remaining coverage
 
 Long-duration operation, pool restarts, broader hardware, and block submission
 need further testing. NVML capabilities and permissions vary by card and driver.
-CPU AVX-512, AMD, FPGA and direct-node RPC backends are not implemented.
+CPU AVX-512, FPGA and direct-node RPC backends are not implemented. AMD support
+is validated on the listed rigs; broader hardware and driver coverage is pending.
 CUDA defaults to architecture 120; other GPUs require an appropriate build
 and their own correctness/performance validation. There is no production-support
 claim or released binary package yet.

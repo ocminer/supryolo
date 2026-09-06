@@ -28,11 +28,11 @@ public:
   bool valid(const Job &job) const;
 };
 struct MineOptions {
-  std::string url, user, password = "x", tui = "auto", cpu_variant = "auto";
+  std::string url, user, password = "x", tui = "auto", cpu_variant = "auto", gpu_mode = "auto";
   std::vector<int> devices;
   bool devices_explicit = false, no_cpu = false, no_gpu = false;
   unsigned cpu_threads = 0;
-  int block = 256, variant = 3;
+  int block = 0, variant = 3, opencl_variant = -1;
   uint32_t batch = 1 << 26, cpu_batch = 16384;
   double seconds = 0;
   unsigned warn_temperature = 75, alarm_temperature = 85;

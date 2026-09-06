@@ -48,6 +48,7 @@ void usage() {
       << "supryolo/0.1.0-dev\n"
          "Mine: --url stratum+tcp://de.b2pool.io:4444 --user ADDRESS.worker\n"
          "Devices: --gpu-device 0,1 (alias -d; default all), --no-gpu, --no-cpu\n"
+         "GPU backend: --gpu-backend auto|cuda|opencl (auto: CUDA plus AMD OpenCL)\n"
          "CPU: --cpu-threads N (0 auto), --cpu (legacy CPU-only alias)\n"
          "CPU kernel: --cpu-variant auto|scalar|avx2 (runtime detection)\n"
          "GPU controls: --gpu-core-clock MHz --gpu-mem-clock MHz --powerlimit W\n"
@@ -56,7 +57,11 @@ void usage() {
          "Display: --tui --no-tui --gpu-temp-warn 75 --gpu-temp-alarm 85\n"
          "Inspect: --list-devices --tui-demo [--seconds 10]\n"
          "Benchmark: --benchmark --no-cpu --gpu-device 0 --seconds 30\n"
-         "Tuning: --block 256 --batch 67108864 --variant 3 --cpu-batch 16384\n"
+         "OpenCL tuning: auto selects AMD variant 3; --opencl-variant 0 (native), 1 "
+         "(precomputed),\n"
+         "               2 (AMD rotations), 3 (precomputed AMD rotations)\n"
+         "Tuning: --block 0 (auto: CUDA 256, OpenCL 64) --batch 67108864 --variant 3 --cpu-batch "
+         "16384\n"
          "Variants: 0 native, 1 PTX, 2 precomputed native, 3 precomputed PTX\n4 uniform nonce "
          "word, 5 two nonces/thread, 6 four nonces/thread\n";
 }
@@ -81,7 +86,9 @@ int main(int argc, char **argv) {
         if (unique.size() != o.devices.size())
           throw std::runtime_error("duplicate GPU device");
         o.devices_explicit = true;
-      } else if (a == "--no-cpu")
+      } else if (a == "--gpu-backend")
+        o.gpu_mode = value();
+      else if (a == "--no-cpu")
         o.no_cpu = true;
       else if (a == "--no-gpu")
         o.no_gpu = true;
@@ -93,6 +100,8 @@ int main(int argc, char **argv) {
         o.cpu_threads = integer(value(), 128);
       else if (a == "--block")
         o.block = integer(value(), 1024);
+      else if (a == "--opencl-variant")
+        o.opencl_variant = integer(value(), 3);
       else if (a == "--variant")
         o.variant = integer(value(), 6);
       else if (a == "--batch") {
@@ -200,11 +209,13 @@ int main(int argc, char **argv) {
       return 0;
     }
     if (list) {
-      auto ds = yolo::cuda_devices();
+      auto ds = yolo::gpu_devices(o.gpu_mode);
       yolo::GpuManagement hw(ds);
       for (size_t i = 0; i < ds.size(); ++i) {
         auto r = hw.sample(i);
-        std::cout << "GPU" << ds[i].index << " " << ds[i].name << " PCI " << ds[i].pci_bus
+        std::cout << "GPU" << ds[i].index << " " << ds[i].name
+                  << (ds[i].api == yolo::GpuApi::cuda ? " [CUDA]" : " [OpenCL]") << " PCI "
+                  << ds[i].pci_bus
                   << " temp=" << (r.temperature ? std::to_string(*r.temperature) + "C" : "--")
                   << " fan=" << (r.fan_percent ? std::to_string(*r.fan_percent) + "%" : "--")
                   << " core=" << (r.core_mhz ? std::to_string(*r.core_mhz) : "--")
@@ -225,7 +236,7 @@ int main(int argc, char **argv) {
       usage();
       return 1;
     }
-    auto all = o.no_gpu ? std::vector<yolo::GpuInfo>{} : yolo::cuda_devices();
+    auto all = o.no_gpu ? std::vector<yolo::GpuInfo>{} : yolo::gpu_devices(o.gpu_mode);
     std::vector<yolo::GpuInfo> selected;
     if (o.devices_explicit) {
       for (int id : o.devices) {
@@ -260,7 +271,7 @@ int main(int argc, char **argv) {
         try {
           bool cpu = i >= selected.size();
           auto backend = cpu ? yolo::cpu_backend(o.cpu_variant)
-                             : yolo::cuda_backend(selected[i].index, o.block, o.variant);
+                             : yolo::gpu_backend(selected[i], o.block, o.variant, o.opencl_variant);
           auto &r = results[i];
           r.name = cpu ? "CPU" : "GPU" + std::to_string(selected[i].index);
           r.name += " " + backend->name();
@@ -297,9 +308,13 @@ int main(int argc, char **argv) {
       if (i >= selected.size())
         cpu_rate += mh;
       else
-        std::cout << r.name << " variant=" << o.variant << " block=" << o.block
-                  << " batch=" << o.batch << " hashes=" << r.hashes << " seconds=" << r.seconds
-                  << " MH/s=" << mh << '\n';
+        std::cout << r.name << " variant="
+                  << (selected[i].api == yolo::GpuApi::opencl
+                          ? (o.opencl_variant < 0 ? std::string("auto")
+                                                  : std::to_string(o.opencl_variant))
+                          : std::to_string(o.variant))
+                  << " block=" << yolo::gpu_block(selected[i], o.block) << " batch=" << o.batch
+                  << " hashes=" << r.hashes << " seconds=" << r.seconds << " MH/s=" << mh << '\n';
     }
     if (cpu_threads)
       std::cout << "CPU threads=" << cpu_threads << " MH/s=" << cpu_rate << '\n';

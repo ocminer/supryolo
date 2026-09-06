@@ -41,6 +41,8 @@ std::unique_ptr<Backend> cpu_avx2_backend();
 std::vector<Hash> cpu_avx2_hashes(const Header &, uint64_t start, uint32_t count);
 std::vector<Hash> cuda_hashes(const Header &, uint64_t start, uint32_t count, int device,
                               int variant = 0);
+std::vector<Hash> opencl_hashes(const Header &, uint64_t start, uint32_t count, int device,
+                                int variant = 0);
 Header sia_work(const std::string &prev, const std::string &coinb1, const std::string &coinb2,
                 const std::string &en1, const std::string &en2, const std::string &ntime);
 } // namespace yolo

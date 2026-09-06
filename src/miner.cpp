@@ -227,7 +227,7 @@ int mine(const MineOptions &o) {
     throw std::runtime_error("payout worker required with --user");
   if (o.no_cpu && o.no_gpu)
     throw std::runtime_error("No mining devices enabled (--no-cpu and --no-gpu)");
-  auto available = o.no_gpu ? std::vector<GpuInfo>{} : cuda_devices();
+  auto available = o.no_gpu ? std::vector<GpuInfo>{} : gpu_devices(o.gpu_mode);
   std::vector<GpuInfo> selected;
   if (!o.no_gpu) {
     if (!o.devices_explicit)
@@ -244,7 +244,7 @@ int mine(const MineOptions &o) {
   if (selected.size() > 64)
     throw std::runtime_error("At most 64 GPUs may be selected");
   if (selected.empty() && o.no_cpu)
-    throw std::runtime_error("No CUDA devices available; CPU disabled");
+    throw std::runtime_error("No enabled GPU devices available; CPU disabled");
   unsigned cpu_threads = o.no_cpu ? 0 : o.cpu_threads;
   if (!o.no_cpu && !cpu_threads) {
     cpu_set_t mask;
@@ -277,7 +277,7 @@ int mine(const MineOptions &o) {
     view.devices.push_back(d);
     auto slot = std::make_unique<Slot>();
     slot->row = i;
-    slot->gpu = selected[i].index;
+    slot->gpu = int(i);
     slots.push_back(std::move(slot));
   }
   size_t cpu_row = view.devices.size();
@@ -404,7 +404,8 @@ int mine(const MineOptions &o) {
           try {
             auto &slot = *slots[index];
             auto backend = slot.gpu < 0 ? cpu_backend(o.cpu_variant)
-                                        : cuda_backend(slot.gpu, o.block, o.variant);
+                                        : gpu_backend(selected[slot.gpu], o.block, o.variant,
+                                                      o.opencl_variant);
             uint32_t batch = slot.gpu < 0 ? o.cpu_batch : o.batch;
             uint64_t generation = 0, cursor = 0;
             while (!token.stop_requested()) {

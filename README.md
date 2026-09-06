@@ -2,12 +2,14 @@
 
 A modular, open-source BTCB2 BLAKE2b miner by **ocminer**.
 
-**Development preview.** NVIDIA CUDA, runtime-dispatched AVX2 CPU mining,
+**Development preview.** NVIDIA CUDA, AMD OpenCL, runtime-dispatched AVX2 CPU mining,
 BTCB2 Stratum, GPU monitoring/control and a Matrix-style terminal dashboard
 are implemented. GPU and CPU shares have been accepted by B2Pool and checked
 independently. This is not yet a production release or a complete HiveOS package.
 
-AMD OpenCL/Vulkan, direct-node RPC solo mining and FPGA backends are planned.
+The same binary runs on NVIDIA and AMD rigs. OpenCL hashing and live shares
+have been validated on RX 7600 XT, RX 7900 XTX and Vega 20 hardware.
+Direct-node RPC solo mining and FPGA backends are planned.
 Pool solo ports already use the same Stratum client.
 
 ![Matrix terminal demo; all displayed mining values are simulated](docs/assets/tui-demo.png)
@@ -15,9 +17,11 @@ Pool solo ports already use the same Stratum client.
 ## Build
 
 Requirements: Linux, CMake 3.24+, a C++20 compiler, OpenSSL development files,
-and a CUDA toolkit supporting your GPU. Python 3 runs integration tests.
-The JSON dependency is included with its license. NVIDIA telemetry uses the
-driver's NVML library at runtime; no separate NVML development package is needed.
+a CUDA toolkit for NVIDIA builds, and OpenCL headers for OpenCL builds. Python 3 runs integration tests.
+OpenCL headers (`CL/cl.h` and `CL/cl_ext.h`) are needed when `YOLO_OPENCL=ON`
+(the default). OpenCL is loaded dynamically; its kernels are embedded in the
+executable. The JSON dependency is included with its license. NVIDIA telemetry uses
+the driver's NVML library at runtime; no separate NVML development package is needed.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=120
@@ -30,10 +34,23 @@ python3 tests/stratum_mock.py ./build/supryolo
 CPU-only build, without a CUDA toolkit:
 
 ```sh
-cmake -S . -B build-cpu -DCMAKE_BUILD_TYPE=Release -DYOLO_CUDA=OFF
+cmake -S . -B build-cpu -DCMAKE_BUILD_TYPE=Release -DYOLO_CUDA=OFF -DYOLO_OPENCL=OFF
 cmake --build build-cpu -j
 ctest --test-dir build-cpu --output-on-failure
 ```
+
+An OpenCL/CPU build without the CUDA toolkit uses the same executable name:
+
+```sh
+cmake -S . -B build-opencl -DCMAKE_BUILD_TYPE=Release -DYOLO_CUDA=OFF
+cmake --build build-opencl -j
+```
+
+The combined build can contain CUDA, OpenCL and CPU support together. Automatic
+selection uses CUDA for NVIDIA and OpenCL for AMD. `--gpu-backend cuda` or
+`--gpu-backend opencl` restricts discovery to one API; the latter can also be
+used for OpenCL diagnostics on NVIDIA. Use `--list-devices` with the same
+backend option to see the corresponding device indices.
 
 ## Run
 
@@ -82,11 +99,18 @@ second, not estimates from the arrival times of a few shares.
 | Device | Configuration | Measured rate | Measurement |
 |---|---|---|---|
 | RTX 5090 32 GB | Default CUDA settings | 17.21 GH/s | Live B2Pool, 240 seconds |
+| RX 7900 XTX 24 GB | Default OpenCL settings | 5.783 GH/s | Live B2Pool, 300 seconds |
+| RX 7600 XT 16 GB | OpenCL, variant 3, group 64 | 2.09 GH/s | Local benchmark, 4 seconds |
+| Instinct MI50/MI60, Vega 20 16 GB | OpenCL, variant 3, group 64 | 2.75 GH/s | Local benchmark, 4 seconds |
 | Ryzen 9 3950X | AVX2, 15 threads | 366.7 MH/s | Local benchmark, 10 seconds |
 | Ryzen 9 3950X | AVX2, 1 thread | 27.1 MH/s | Local benchmark, 5 seconds |
 | Ryzen 9 3950X | Scalar, 1 thread | 4.0 MH/s | Local benchmark, 5 seconds |
 
-CPU thread scaling depends on other workloads and cooling. The live GPU rate
+The RX 7600 XT and Vega 20 local results are short tuning samples, not sustained
+guarantees. One Vega 20 card reached 85°C and about 1.9 GH/s in the multi-card
+run, which was stopped early; cooling needs attention for sustained operation. AMD driver versions
+3581.0 (Navi 31) and 3649.0 (Navi 33/Vega 20) were used.
+CPU thread scaling depends on other workloads and cooling. The RTX 5090 live rate
 was measured on one card; it is not an isolated dual-GPU result. CUDA 13.3,
 architecture 120 was used. The local GPU benchmark measured 17.31 GH/s over
 30 seconds. See [validation and live acceptance](docs/VALIDATION.md).
@@ -97,7 +121,10 @@ architecture 120 was used. The local GPU benchmark measured 17.31 GH/s over
 ```
 
 Default CUDA tuning is `--variant 3 --block 256 --batch 67108864`.
-Alternative kernels can be selected with `--variant`; see `--help`.
+Automatic OpenCL tuning uses variant 3 on AMD drivers exposing
+`cl_amd_media_ops`, otherwise the native variant 0, with 64 threads per
+workgroup. `--block 0` selects these per-backend defaults.
+Use `--variant` for CUDA or `--opencl-variant` for OpenCL; see `--help`.
 Larger batches can increase job-switch latency. Every GPU/AVX2 candidate is
 independently rehashed and checked against the full 256-bit target before
 submission. GPU candidate-buffer overflow is an explicit error.
