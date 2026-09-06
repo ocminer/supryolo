@@ -89,6 +89,27 @@ int main(int argc, char **argv) {
         auto a = cpu->scan(w, 0xfffff000ULL, 32768), b = gpu->scan(w, 0xfffff000ULL, 32768);
         std::sort(b.nonces.begin(), b.nonces.end());
         require(a.nonces == b.nonces);
+        // Exercise equality and the low target limbs beyond the GPU's 64-bit filter.
+        constexpr uint64_t nonce = 0x100000007ULL;
+        store_le(w.header.data() + 32, nonce);
+        w.target = blake2b256(w.header);
+        require(gpu->scan(w, nonce, 1).nonces == std::vector<uint64_t>{nonce});
+        auto equal_target = w.target;
+        for (int i = 31; i >= 0; --i) {
+          if (w.target[i]-- != 0)
+            break;
+        }
+        require(std::equal(w.target.begin(), w.target.begin() + 8, equal_target.begin()));
+        require(gpu->scan(w, nonce, 1).nonces.empty());
+        // Every nonce qualifies: overflowing the result buffer must be explicit.
+        w.target.fill(255);
+        bool overflow = false;
+        try {
+          gpu->scan(w, 0, 4097);
+        } catch (const std::runtime_error &e) {
+          overflow = std::string(e.what()).find("candidate buffer overflow") != std::string::npos;
+        }
+        require(overflow);
       }
     }
     std::cout << "PASS scalar vectors, exact difficulty"
