@@ -6,6 +6,8 @@ from fractions import Fraction
 
 binary=sys.argv[1]
 cpu='--cpu' in sys.argv[2:]
+mixed='--mixed' in sys.argv[2:]
+prefixes=set()
 listener=socket.socket();listener.bind(('127.0.0.1',0));listener.listen(1);listener.settimeout(10)
 errors=[];accepted=0;stale=0;epochs=0
 coin='0000001b11a8e2c16084cc487838df37dd867fed260104a09be4298db7a1e833ff4b0900000000'
@@ -40,7 +42,7 @@ def serve():
      def digest(e):
       root=hashlib.blake2b(bytes.fromhex('00'+coin+e+p[2]),digest_size=32).digest()
       return int.from_bytes(hashlib.blake2b(bytes.fromhex(prev+p[4]+p[3])+root,digest_size=32).digest(),'big')
-     if digest(en)<=target:accepted+=1;send({'id':q['id'],'result':True,'error':None})
+     if digest(en)<=target:prefixes.add(int.from_bytes(bytes.fromhex(p[4]),'little')>>56);accepted+=1;send({'id':q['id'],'result':True,'error':None})
      elif updated and digest('01020304')<=target:stale+=1;send({'id':q['id'],'result':False,'error':[21,'stale',None]})
      else:raise AssertionError('submitted hash does not match independent pool verifier')
   conn.close()
@@ -49,11 +51,15 @@ def serve():
  except BaseException as e:errors.append(repr(e))
 thread=threading.Thread(target=serve);thread.start()
 cmd=[binary,'--url',f'stratum+tcp://127.0.0.1:{listener.getsockname()[1]}','--user','ocminer-test','--seconds','4','--batch','16384' if cpu else '4194304']
-if cpu:cmd+=['--cpu']
+if cpu:cmd+=['--no-gpu','--cpu-threads','1']
+elif mixed:cmd+=['--cpu-threads','4']
+else:cmd+=['--no-cpu']
 if '--devices' in sys.argv:
- cmd+=['-d',sys.argv[sys.argv.index('--devices')+1]]
+ cmd+=['--gpu-device',sys.argv[sys.argv.index('--devices')+1]]
+elif not cpu and '--all-visible' not in sys.argv:cmd+=['--gpu-device','0']
 p=subprocess.run(cmd,text=True,capture_output=True,timeout=15);thread.join(10);listener.close()
 assert p.returncode==0,(p.returncode,p.stderr,p.stdout[-1000:])
 assert not errors,errors
 assert accepted>0 and epochs==1,(accepted,epochs,p.stderr,p.stdout[-1000:])
-print(f'PASS {"CPU" if cpu else "CUDA"} Stratum: {accepted} independently verified shares; extranonce change with reused job ID; {stale} in-flight stale')
+if mixed:assert 0 in prefixes and any(x>0 for x in prefixes),prefixes
+print(f'PASS {"mixed CPU/CUDA" if mixed else "CPU" if cpu else "CUDA"} Stratum: {accepted} independently verified shares; extranonce change with reused job ID; {stale} in-flight stale')

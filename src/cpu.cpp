@@ -22,5 +22,11 @@ public:
     return r;
   }
 };
-std::unique_ptr<Backend> cpu_backend() { return std::make_unique<Cpu>(); }
+std::unique_ptr<Backend> cpu_backend(const std::string &variant) {
+  if (variant == "avx2" || (variant == "auto" && cpu_avx2_available()))
+    return cpu_avx2_backend();
+  if (variant == "scalar" || variant == "auto")
+    return std::make_unique<Cpu>();
+  throw std::runtime_error("CPU variant must be auto, scalar or avx2");
+}
 } // namespace yolo

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 #include "yolo/core.hpp"
+#include "yolo/hardware.hpp"
 #include <stdexcept>
 namespace yolo {
+std::vector<GpuInfo> cuda_devices() { return {}; }
 std::unique_ptr<Backend> cuda_backend(int, int, int) {
   throw std::runtime_error("CUDA backend not built; use --cpu");
 }

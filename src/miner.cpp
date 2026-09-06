@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
+#include "yolo/hardware.hpp"
 #include "yolo/stratum.hpp"
+#include "yolo/ui.hpp"
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -12,6 +14,7 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <poll.h>
+#include <sched.h>
 #include <stdexcept>
 #include <sys/socket.h>
 #include <thread>
@@ -191,27 +194,186 @@ public:
 struct Found {
   Job job;
   uint64_t nonce;
+  size_t row;
 };
+struct Pending {
+  Clock::time_point sent;
+  size_t row;
+};
+struct Slot {
+  size_t row;
+  int gpu;
+  std::atomic<uint64_t> hashes{0};
+};
+struct SignalRestore {
+  void (*oldint)(int) = std::signal(SIGINT, interrupt);
+  void (*oldterm)(int) = std::signal(SIGTERM, interrupt);
+  void (*oldpipe)(int) = std::signal(SIGPIPE, SIG_IGN);
+  ~SignalRestore() {
+    std::signal(SIGINT, oldint);
+    std::signal(SIGTERM, oldterm);
+    std::signal(SIGPIPE, oldpipe);
+  }
+};
+std::string reject_reason(const json &message) {
+  if (message.contains("error") && message["error"].is_array() && message["error"].size() > 1 &&
+      message["error"][1].is_string())
+    return message["error"][1].get<std::string>();
+  return "unspecified pool rejection";
+}
 } // namespace
 int mine(const MineOptions &o) {
   if (o.user.empty())
     throw std::runtime_error("payout worker required with --user");
-  if (o.devices.empty() || o.devices.size() > 64)
-    throw std::runtime_error("invalid device list");
+  if (o.no_cpu && o.no_gpu)
+    throw std::runtime_error("No mining devices enabled (--no-cpu and --no-gpu)");
+  auto available = o.no_gpu ? std::vector<GpuInfo>{} : cuda_devices();
+  std::vector<GpuInfo> selected;
+  if (!o.no_gpu) {
+    if (!o.devices_explicit)
+      selected = available;
+    else
+      for (int id : o.devices) {
+        auto it = std::find_if(available.begin(), available.end(),
+                               [&](const GpuInfo &d) { return d.index == id; });
+        if (it == available.end())
+          throw std::runtime_error("GPU device " + std::to_string(id) + " unavailable");
+        selected.push_back(*it);
+      }
+  }
+  if (selected.size() > 64)
+    throw std::runtime_error("At most 64 GPUs may be selected");
+  if (selected.empty() && o.no_cpu)
+    throw std::runtime_error("No CUDA devices available; CPU disabled");
+  unsigned cpu_threads = o.no_cpu ? 0 : o.cpu_threads;
+  if (!o.no_cpu && !cpu_threads) {
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    unsigned logical = sched_getaffinity(0, sizeof(mask), &mask) == 0
+                           ? CPU_COUNT(&mask)
+                           : std::max(1u, std::thread::hardware_concurrency());
+    cpu_threads = std::max(1, int(logical / 2) - int(selected.size()) - 1);
+  }
+  if (cpu_threads > 128)
+    throw std::runtime_error("At most 128 CPU threads supported");
+  GpuManagement hardware(selected);
+  auto control_events = hardware.apply(o.controls);
   interrupted = 0;
-  auto oldint = std::signal(SIGINT, interrupt), oldterm = std::signal(SIGTERM, interrupt);
-  std::signal(SIGPIPE, SIG_IGN);
+  SignalRestore signals;
+  Dashboard ui(o.tui);
+  DashboardView view;
+  view.pool = o.url;
+  view.worker = o.user;
+  auto dot = view.worker.rfind('.');
+  if (dot != std::string::npos)
+    view.worker = view.worker.substr(dot + 1);
+  view.warn_temperature = o.warn_temperature;
+  view.alarm_temperature = o.alarm_temperature;
+  std::vector<std::unique_ptr<Slot>> slots;
+  for (size_t i = 0; i < selected.size(); ++i) {
+    DeviceView d;
+    d.label = "GPU" + std::to_string(selected[i].index);
+    d.name = selected[i].name;
+    view.devices.push_back(d);
+    auto slot = std::make_unique<Slot>();
+    slot->row = i;
+    slot->gpu = selected[i].index;
+    slots.push_back(std::move(slot));
+  }
+  size_t cpu_row = view.devices.size();
+  if (cpu_threads) {
+    DeviceView d;
+    d.label = "CPU";
+    d.name = cpu_backend(o.cpu_variant)->name() + " x" + std::to_string(cpu_threads);
+    view.devices.push_back(d);
+    for (unsigned i = 0; i < cpu_threads; ++i) {
+      auto s = std::make_unique<Slot>();
+      s->row = cpu_row;
+      s->gpu = -1;
+      slots.push_back(std::move(s));
+    }
+  }
+  ui.update(view);
+  for (auto &e : control_events)
+    ui.event(e);
+  ui.event("Selected " + std::to_string(selected.size()) + " GPU(s), " +
+           std::to_string(cpu_threads) + " CPU thread(s)");
+  std::mutex sensor_mutex;
+  std::vector<GpuReadings> readings(selected.size());
+  std::jthread sensor_thread([&](std::stop_token stop) {
+    while (!stop.stop_requested()) {
+      std::vector<GpuReadings> next;
+      for (size_t i = 0; i < selected.size(); ++i)
+        next.push_back(hardware.sample(i));
+      {
+        std::lock_guard lock(sensor_mutex);
+        readings = std::move(next);
+      }
+      for (int i = 0; i < 10 && !stop.stop_requested(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+  });
   const auto begin = Clock::now();
-  uint64_t total = 0, accepted = 0, rejected = 0, stale = 0;
+  auto last_update = begin;
+  std::vector<uint64_t> last_hashes(view.devices.size());
+  std::vector<int> thermal(view.devices.size(), -1);
+  bool had_work = false, fatal = false;
   int backoff = 1;
-  bool had_work = false;
   auto expired = [&]() {
-    return interrupted ||
+    return interrupted || ui.quit_requested() ||
            (o.seconds > 0 &&
             std::chrono::duration<double>(Clock::now() - begin).count() >= o.seconds);
   };
-  while (!expired()) {
+  auto update = [&](bool force = false) {
+    auto now = Clock::now();
+    double delta = std::chrono::duration<double>(now - last_update).count();
+    if (!force && delta < .25)
+      return;
+    view.elapsed = std::chrono::duration<double>(now - begin).count();
+    for (auto &d : view.devices)
+      d.hashes = 0;
+    for (auto &s : slots)
+      view.devices[s->row].hashes += s->hashes.load();
+    view.hashes = 0;
+    {
+      std::lock_guard lock(sensor_mutex);
+      for (size_t i = 0; i < readings.size(); ++i)
+        view.devices[i].sensors = readings[i];
+    }
+    for (size_t i = 0; i < view.devices.size(); ++i) {
+      auto &d = view.devices[i];
+      view.hashes += d.hashes;
+      if (delta > 0) {
+        double instant = (d.hashes - last_hashes[i]) / delta;
+        d.hashes_per_second =
+            d.hashes_per_second == 0 ? instant : (.25 * instant + .75 * d.hashes_per_second);
+      }
+      last_hashes[i] = d.hashes;
+      if (d.sensors.temperature) {
+        int level = *d.sensors.temperature >= o.alarm_temperature  ? 2
+                    : *d.sensors.temperature >= o.warn_temperature ? 1
+                                                                   : 0;
+        if (level != thermal[i]) {
+          if (level == 2)
+            ui.event(d.label + " temperature " + std::to_string(*d.sensors.temperature) + "C ALARM",
+                     Severity::error);
+          else if (level == 1)
+            ui.event(d.label + " temperature warning " + std::to_string(*d.sensors.temperature) +
+                         "C",
+                     Severity::warning);
+          else if (thermal[i] > 0)
+            ui.event(d.label + " temperature recovered", Severity::success);
+          thermal[i] = level;
+        }
+      }
+    }
+    last_update = now;
+    ui.update(view);
+  };
+  while (!expired() && !fatal) {
     try {
+      view.state = "CONNECTING";
+      ui.update(view);
       Socket socket(o.url);
       StratumState state;
       socket.send({{"id", 1},
@@ -226,15 +388,26 @@ int mine(const MineOptions &o) {
       std::optional<Job> work;
       std::deque<Found> found;
       std::string failure;
-      std::atomic<uint64_t> done{0};
       std::vector<std::jthread> workers;
-      for (size_t index = 0; index < o.devices.size(); ++index)
-        workers.emplace_back([&, index](std::stop_token stop) {
+      struct Stop {
+        std::vector<std::jthread> &workers;
+        ~Stop() {
+          for (auto &w : workers)
+            w.request_stop();
+          for (auto &w : workers)
+            if (w.joinable())
+              w.join();
+        }
+      } stop{workers};
+      for (size_t index = 0; index < slots.size(); ++index)
+        workers.emplace_back([&, index](std::stop_token token) {
           try {
-            auto backend =
-                o.cpu ? cpu_backend() : cuda_backend(o.devices[index], o.block, o.variant);
+            auto &slot = *slots[index];
+            auto backend = slot.gpu < 0 ? cpu_backend(o.cpu_variant)
+                                        : cuda_backend(slot.gpu, o.block, o.variant);
+            uint32_t batch = slot.gpu < 0 ? o.cpu_batch : o.batch;
             uint64_t generation = 0, cursor = 0;
-            while (!stop.stop_requested()) {
+            while (!token.stop_requested()) {
               std::optional<Job> j;
               {
                 std::lock_guard lock(mutex);
@@ -249,18 +422,18 @@ int mine(const MineOptions &o) {
                 cursor = 0;
               }
               constexpr uint64_t space = uint64_t{1} << 56;
-              if (cursor > space - o.batch)
-                throw std::runtime_error("device nonce partition exhausted");
+              if (cursor > space - batch)
+                throw std::runtime_error("nonce partition exhausted");
               uint64_t start = (uint64_t(index) << 56) | cursor;
-              auto r = backend->scan(j->work, start, o.batch);
+              auto r = backend->scan(j->work, start, batch);
               cursor += r.hashes;
-              done += r.hashes;
+              slot.hashes += r.hashes;
               {
                 std::lock_guard lock(mutex);
                 if (found.size() + r.nonces.size() > 8192)
                   throw std::runtime_error("share queue overflow");
                 for (auto n : r.nonces)
-                  found.push_back({*j, n});
+                  found.push_back({*j, n, slot.row});
               }
             }
           } catch (const std::exception &e) {
@@ -268,67 +441,78 @@ int mine(const MineOptions &o) {
             failure = e.what();
           }
         });
-      struct Stop {
-        std::vector<std::jthread> &workers;
-        std::atomic<uint64_t> &done;
-        uint64_t &total;
-        ~Stop() {
-          for (auto &w : workers)
-            w.request_stop();
-          for (auto &w : workers)
-            if (w.joinable())
-              w.join();
-          total += done.exchange(0);
-        }
-      } stop{workers, done, total};
-      std::unordered_map<int64_t, Clock::time_point> pending;
+      std::unordered_map<int64_t, Pending> pending;
       int64_t nextid = 10;
-      auto last = Clock::now(), received = last;
+      auto received = Clock::now();
       bool activated = false;
-      std::cout << "Connected to " << o.url << "\n";
+      ui.event("Connected to " + o.url);
       while (!expired()) {
-        for (auto &msg : socket.read()) {
+        for (auto &message : socket.read()) {
           received = Clock::now();
-          auto j = state.receive(msg);
-          if (msg.contains("id") && msg["id"].is_number_integer()) {
-            auto id = msg["id"].get<int64_t>();
+          auto job = state.receive(message);
+          if (message.contains("method")) {
+            auto method = message["method"].get<std::string>();
+            if (method == "mining.set_difficulty") {
+              view.difficulty = message["params"][0].dump();
+              ui.event("Vardiff retarget -> " + view.difficulty + " (next job)", Severity::info);
+            } else if (method == "mining.set_extranonce")
+              ui.event("Extranonce updated (next job)");
+            else if (method == "client.show_message" && message.contains("params") &&
+                     message["params"].is_array() && !message["params"].empty() &&
+                     message["params"][0].is_string())
+              ui.event("Pool: " + message["params"][0].get<std::string>());
+          }
+          if (message.contains("id") && message["id"].is_number_integer()) {
+            auto id = message["id"].get<int64_t>();
             if (id == 2)
-              std::cout << "Extranonce subscription: "
-                        << (msg.value("result", json()) == true ? "supported"
-                                                                : "not supported by endpoint")
-                        << "\n";
-            if (pending.erase(id)) {
-              if (msg.value("result", json()) == true) {
-                ++accepted;
-                std::cout << "Share accepted (" << accepted << ")\n";
+              ui.event(message.value("result", json()) == true
+                           ? "Extranonce subscription supported"
+                           : "Extranonce subscription unavailable on this endpoint");
+            auto found_pending = pending.find(id);
+            if (found_pending != pending.end()) {
+              auto &device = view.devices[found_pending->second.row];
+              if (message.value("result", json()) == true) {
+                ++view.accepted;
+                ++device.accepted;
+                ui.event("Share accepted (" + device.label + ") #" + std::to_string(view.accepted),
+                         Severity::success);
               } else {
                 int code = 0;
-                if (msg.contains("error") && msg["error"].is_array() && !msg["error"].empty() &&
-                    msg["error"][0].is_number_integer())
-                  code = msg["error"][0];
-                if (code == 21)
-                  ++stale;
-                else
-                  ++rejected;
-                std::cout << "Share rejected code=" << code << "\n";
+                if (message.contains("error") && message["error"].is_array() &&
+                    !message["error"].empty() && message["error"][0].is_number_integer())
+                  code = message["error"][0];
+                if (code == 21) {
+                  ++view.stale;
+                  ++device.stale;
+                } else {
+                  ++view.rejected;
+                  ++device.rejected;
+                }
+                ui.event("Share rejected (" + device.label + ", " + reject_reason(message) +
+                             ", code " + std::to_string(code) + ")",
+                         code == 21 ? Severity::warning : Severity::error);
               }
+              pending.erase(found_pending);
             }
           }
-          if (state.authorized && (j || !activated)) {
+          if (state.authorized && (job || !activated)) {
             std::lock_guard lock(mutex);
             work = state.current;
             activated = bool(work);
             if (activated) {
               backoff = 1;
               had_work = true;
+              view.state = "MINING";
             }
           }
         }
         std::deque<Found> queue;
         {
           std::lock_guard lock(mutex);
-          if (!failure.empty())
+          if (!failure.empty()) {
+            fatal = true;
             throw std::runtime_error(failure);
+          }
           queue.swap(found);
         }
         for (const auto &f : queue) {
@@ -338,45 +522,63 @@ int mine(const MineOptions &o) {
             throw std::runtime_error("too many outstanding shares");
           std::array<uint8_t, 8> nonce;
           store_le(nonce.data(), f.nonce);
+          Header header = f.job.work.header;
+          store_le(header.data() + 32, f.nonce);
+          auto hash = blake2b256(header);
+          if (!meets(hash, f.job.work.target)) {
+            fatal = true;
+            throw std::runtime_error("independent submit-time hash check failed");
+          }
+          if (meets(hash, f.job.network_target)) {
+            ++view.block_candidates;
+            ui.event("Block candidate (" + view.devices[f.row].label +
+                         ") - awaiting pool confirmation",
+                     Severity::success);
+          }
           socket.send(
               {{"id", nextid},
                {"method", "mining.submit"},
                {"params", json::array({o.user, f.job.id, f.job.en2, f.job.ntime, hex(nonce)})}});
-          pending.emplace(nextid++, Clock::now());
+          pending.emplace(nextid++, Pending{Clock::now(), f.row});
         }
         auto now = Clock::now();
         if (now - received > std::chrono::seconds(120))
           throw std::runtime_error("pool receive timeout");
-        for (auto [id, t] : pending)
-          if (now - t > std::chrono::seconds(60))
+        for (auto &[id, p] : pending)
+          if (now - p.sent > std::chrono::seconds(60))
             throw std::runtime_error("share response timeout");
-        if (now - last >= std::chrono::seconds(10)) {
-          total += done.exchange(0);
-          auto elapsed = std::chrono::duration<double>(now - begin).count();
-          std::cout << "Total " << total / elapsed / 1e6 << " MH/s accepted=" << accepted
-                    << " rejected=" << rejected << " stale=" << stale << "\n";
-          last = now;
-        }
+        view.pending = pending.size();
+        update();
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
       }
       for (auto &w : workers)
         w.request_stop();
       for (auto &w : workers)
         w.join();
-      total += done.exchange(0);
     } catch (const std::exception &e) {
-      std::cerr << "Session stopped: " << e.what() << "; reconnect in " << backoff << "s\n";
-      for (int i = 0; i < backoff * 10 && !expired(); ++i)
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      backoff = std::min(backoff * 2, 30);
+      view.state = fatal ? "DEVICE ERROR" : "RECONNECTING";
+      ui.event(std::string("Session stopped: ") + e.what() +
+                   (fatal ? "" : "; reconnect in " + std::to_string(backoff) + "s"),
+               Severity::error);
+      if (!fatal) {
+        for (int i = 0; i < backoff * 10 && !expired(); ++i) {
+          update();
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        backoff = std::min(backoff * 2, 30);
+      }
     }
   }
-  std::signal(SIGINT, oldint);
-  std::signal(SIGTERM, oldterm);
-  auto elapsed = std::chrono::duration<double>(Clock::now() - begin).count();
-  std::cout << "Final hashes=" << total << " seconds=" << elapsed
-            << " MH/s=" << total / elapsed / 1e6 << " accepted=" << accepted
-            << " rejected=" << rejected << " stale=" << stale << "\n";
-  return rejected ? 2 : (had_work ? 0 : 1);
+  sensor_thread.request_stop();
+  if (sensor_thread.joinable())
+    sensor_thread.join();
+  view.state = "STOPPED";
+  update(true);
+  ui.event(
+      "Final hashes=" + std::to_string(view.hashes) + " seconds=" + std::to_string(view.elapsed) +
+      " MH/s=" + std::to_string(view.elapsed > 0 ? view.hashes / view.elapsed / 1e6 : 0) +
+      " accepted=" + std::to_string(view.accepted) + " rejected=" + std::to_string(view.rejected) +
+      " stale=" + std::to_string(view.stale) + " pending=" + std::to_string(view.pending));
+  return fatal ? 1 : view.rejected ? 2 : (had_work ? 0 : 1);
 }
 } // namespace yolo

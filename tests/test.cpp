@@ -18,6 +18,17 @@ int main(int argc, char **argv) {
             "bddd813c634239723171ef3fee98579b94964e3bb1cb3e427262c8c068d52319");
     require(hex(difficulty_target("1")) ==
             "00000000ffff0000000000000000000000000000000000000000000000000000");
+    require(compact_target("1d00ffff") == difficulty_target("1"));
+    require(hex(compact_target("03000001")) == std::string(63, '0') + "1");
+    for (const auto &invalid : {"01000001", "1d80ffff", "23000001", "22010000"}) {
+      bool rejected = false;
+      try {
+        compact_target(invalid);
+      } catch (const std::runtime_error &) {
+        rejected = true;
+      }
+      require(rejected);
+    }
     require(difficulty_target("128") == difficulty_target("1.28e2"));
     {
       using J = nlohmann::json;
@@ -62,10 +73,41 @@ int main(int argc, char **argv) {
       }
       require(bad);
     }
+    if (cpu_avx2_available()) {
+      std::mt19937_64 rng(73);
+      for (int trial = 0; trial < 32; ++trial) {
+        Header h;
+        for (auto &b : h)
+          b = uint8_t(rng());
+        uint32_t count = 257 + trial;
+        uint64_t start = trial == 0   ? 0
+                         : trial == 1 ? 0xfffffff0ULL
+                         : trial == 2 ? UINT64_MAX - count + 1
+                                      : rng() >> 1;
+        auto hashes = cpu_avx2_hashes(h, start, count);
+        for (size_t i = 0; i < hashes.size(); ++i) {
+          store_le(h.data() + 32, start + i);
+          require(hashes[i] == blake2b256(h));
+        }
+        Work w{h, {}};
+        w.target.fill(255);
+        w.target[0] = trial * 8;
+        auto ref = cpu_backend("scalar"), fast = cpu_backend("avx2");
+        require(ref->scan(w, start, count).nonces == fast->scan(w, start, count).nonces);
+        store_le(w.header.data() + 32, start);
+        w.target = blake2b256(w.header);
+        require(fast->scan(w, start, 1).nonces == std::vector<uint64_t>{start});
+        for (int j = 31; j >= 0; --j)
+          if (w.target[j]-- != 0)
+            break;
+        require(fast->scan(w, start, 1).nonces.empty());
+      }
+      std::cout << "PASS AVX2 full hashes, tails, nonce boundaries and full targets\n";
+    }
     if (argc > 1) {
       int device = std::stoi(argv[1]);
       std::mt19937_64 rng(42);
-      for (int variant = 0; variant < 4; ++variant) {
+      for (int variant = 0; variant < 7; ++variant) {
         for (int trial = 0; trial < 8; ++trial) {
           Header h;
           for (auto &b : h)
@@ -85,7 +127,7 @@ int main(int argc, char **argv) {
           b = uint8_t(rng());
         w.target.fill(255);
         w.target[0] = 8;
-        auto cpu = cpu_backend(), gpu = cuda_backend(device, 128, variant);
+        auto cpu = cpu_backend("scalar"), gpu = cuda_backend(device, 128, variant);
         auto a = cpu->scan(w, 0xfffff000ULL, 32768), b = gpu->scan(w, 0xfffff000ULL, 32768);
         std::sort(b.nonces.begin(), b.nonces.end());
         require(a.nonces == b.nonces);
@@ -113,7 +155,7 @@ int main(int argc, char **argv) {
       }
     }
     std::cout << "PASS scalar vectors, exact difficulty"
-              << (argc > 1 ? ", 32768 GPU full hashes and candidate-set comparisons" : "") << "\n";
+              << (argc > 1 ? ", 57344 GPU full hashes and candidate-set comparisons" : "") << "\n";
   } catch (const std::exception &e) {
     std::cerr << e.what() << "\n";
     return 1;

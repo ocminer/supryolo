@@ -50,6 +50,7 @@ std::optional<Job> StratumState::receive(const json &msg) {
       j.ntime = p[7].get<std::string>();
       j.work.header = sia_work(p[1], p[2], p[3], en1, j.en2, j.ntime);
       j.work.target = next_target;
+      j.network_target = compact_target(p[6].get<std::string>());
       current = j;
       return j;
     }

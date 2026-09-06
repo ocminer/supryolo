@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "yolo/core.hpp"
+#include "yolo/hardware.hpp"
 #include <algorithm>
 #include <bit>
 #include <chrono>
@@ -28,14 +29,16 @@ template <int R, int Mode> __device__ __forceinline__ uint64_t rotate(uint64_t x
     uint32_t lo = uint32_t(x), hi = uint32_t(x >> 32), a, b;
     if constexpr (R == 32)
       return (uint64_t(lo) << 32) | hi;
-    else if constexpr (R < 32) {
-      asm("shf.r.wrap.b32 %0, %1, %2, %3;" : "=r"(a) : "r"(lo), "r"(hi), "n"(R));
-      asm("shf.r.wrap.b32 %0, %1, %2, %3;" : "=r"(b) : "r"(hi), "r"(lo), "n"(R));
-    } else {
-      asm("shf.r.wrap.b32 %0, %1, %2, %3;" : "=r"(a) : "r"(hi), "r"(lo), "n"(R - 32));
-      asm("shf.r.wrap.b32 %0, %1, %2, %3;" : "=r"(b) : "r"(lo), "r"(hi), "n"(R - 32));
+    else {
+      if constexpr (R < 32) {
+        asm("shf.r.wrap.b32 %0, %1, %2, %3;" : "=r"(a) : "r"(lo), "r"(hi), "n"(R));
+        asm("shf.r.wrap.b32 %0, %1, %2, %3;" : "=r"(b) : "r"(hi), "r"(lo), "n"(R));
+      } else {
+        asm("shf.r.wrap.b32 %0, %1, %2, %3;" : "=r"(a) : "r"(hi), "r"(lo), "n"(R - 32));
+        asm("shf.r.wrap.b32 %0, %1, %2, %3;" : "=r"(b) : "r"(lo), "r"(hi), "n"(R - 32));
+      }
+      return (uint64_t(b) << 32) | a;
     }
-    return (uint64_t(b) << 32) | a;
   }
 }
 template <int Mode>
@@ -106,20 +109,63 @@ __device__ __forceinline__ uint64_t swap(uint64_t x) {
   uint32_t lo = __byte_perm(uint32_t(x), 0, 0x0123), hi = __byte_perm(uint32_t(x >> 32), 0, 0x0123);
   return (uint64_t(lo) << 32) | hi;
 }
-template <int Mode, bool Dump>
+template <int Mode, bool Dump, int Roll = 1>
 __global__ void kernel(Params p, uint64_t start, uint32_t count, Hits *hits, uint64_t *hashes) {
-  uint64_t i = uint64_t(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (i >= count)
-    return;
-  uint64_t h[4];
-  hash80<Mode>(p, start + i, h);
-  if constexpr (Dump) {
-    for (int j = 0; j < 4; ++j)
-      hashes[4 * i + j] = h[j];
-  } else if (swap(h[0]) <= p.target) {
-    unsigned slot = atomicAdd(&hits->count, 1);
-    if (slot < capacity)
-      hits->nonces[slot] = start + i;
+  uint64_t base = uint64_t(blockIdx.x) * blockDim.x * Roll + threadIdx.x;
+#pragma unroll
+  for (int k = 0; k < Roll; ++k) {
+    uint64_t i = base + uint64_t(k) * blockDim.x;
+    if (i >= count)
+      continue;
+    uint64_t nonce = start + i;
+    if constexpr (Mode >= 4) {
+      // Keep the high nonce word uniform when this batch cannot cross a 32-bit boundary.
+      // The general path remains necessary for arbitrary starts and diagnostic ranges.
+      if (uint32_t(start) <= UINT32_MAX - (count - 1))
+        nonce = (start & 0xffffffff00000000ULL) | uint32_t(uint32_t(start) + uint32_t(i));
+    }
+    uint64_t h[4];
+    hash80<Mode>(p, nonce, h);
+    if constexpr (Dump) {
+      for (int j = 0; j < 4; ++j)
+        hashes[4 * i + j] = h[j];
+    } else if (swap(h[0]) <= p.target) {
+      unsigned slot = atomicAdd(&hits->count, 1);
+      if (slot < capacity)
+        hits->nonces[slot] = nonce;
+    }
+  }
+}
+template <bool Dump>
+void launch(int variant, Params p, uint64_t start, uint32_t count, int block, cudaStream_t stream,
+            Hits *hits, uint64_t *hashes) {
+  unsigned grid = (uint64_t(count) + block - 1) / block;
+  switch (variant) {
+  case 0:
+    kernel<0, Dump><<<grid, block, 0, stream>>>(p, start, count, hits, hashes);
+    break;
+  case 1:
+    kernel<1, Dump><<<grid, block, 0, stream>>>(p, start, count, hits, hashes);
+    break;
+  case 2:
+    kernel<2, Dump><<<grid, block, 0, stream>>>(p, start, count, hits, hashes);
+    break;
+  case 3:
+    kernel<3, Dump><<<grid, block, 0, stream>>>(p, start, count, hits, hashes);
+    break;
+  case 4:
+    kernel<5, Dump><<<grid, block, 0, stream>>>(p, start, count, hits, hashes);
+    break;
+  case 5:
+    kernel<5, Dump, 2><<<(uint64_t(count) + 2 * block - 1) / (2 * block), block, 0, stream>>>(
+        p, start, count, hits, hashes);
+    break;
+  case 6:
+    kernel<5, Dump, 4><<<(uint64_t(count) + 4 * block - 1) / (4 * block), block, 0, stream>>>(
+        p, start, count, hits, hashes);
+    break;
+  default:
+    throw std::runtime_error("invalid kernel variant");
   }
 }
 Params params(const Work &w) {
@@ -161,7 +207,7 @@ class Cuda final : public Backend {
 
 public:
   Cuda(int d, int b, int v) : device(d), block(b), variant(v) {
-    if (b < 32 || b > 1024 || b % 32 || v < 0 || v > 3)
+    if (b < 32 || b > 1024 || b % 32 || v < 0 || v > 6)
       throw std::runtime_error("invalid CUDA configuration");
     check(cudaSetDevice(d));
     cudaDeviceProp prop;
@@ -200,15 +246,7 @@ public:
     auto t = std::chrono::steady_clock::now();
     check(cudaMemsetAsync(hits, 0, sizeof(unsigned), stream));
     auto p = params(w);
-    unsigned grid = (uint64_t(count) + block - 1) / block;
-    if (variant == 0)
-      kernel<0, false><<<grid, block, 0, stream>>>(p, start, count, hits, nullptr);
-    else if (variant == 1)
-      kernel<1, false><<<grid, block, 0, stream>>>(p, start, count, hits, nullptr);
-    else if (variant == 2)
-      kernel<2, false><<<grid, block, 0, stream>>>(p, start, count, hits, nullptr);
-    else
-      kernel<3, false><<<grid, block, 0, stream>>>(p, start, count, hits, nullptr);
+    launch<false>(variant, p, start, count, block, stream, hits, nullptr);
     check(cudaGetLastError());
     check(cudaMemcpyAsync(host, hits, sizeof(Hits), cudaMemcpyDeviceToHost, stream));
     check(cudaStreamSynchronize(stream));
@@ -239,7 +277,7 @@ std::unique_ptr<Backend> cuda_backend(int d, int b, int v) {
 }
 std::vector<Hash> cuda_hashes(const Header &header, uint64_t start, uint32_t count, int device,
                               int variant) {
-  if (!count || count > 65536 || start > UINT64_MAX - (count - 1) || variant < 0 || variant > 3)
+  if (!count || count > 65536 || start > UINT64_MAX - (count - 1) || variant < 0 || variant > 6)
     throw std::runtime_error("invalid hash test range");
   check(cudaSetDevice(device));
   uint64_t *out;
@@ -248,14 +286,7 @@ std::vector<Hash> cuda_hashes(const Header &header, uint64_t start, uint32_t cou
   w.header = header;
   std::vector<Hash> hashes(count);
   try {
-    if (variant == 0)
-      kernel<0, true><<<(count + 127) / 128, 128>>>(params(w), start, count, nullptr, out);
-    else if (variant == 1)
-      kernel<1, true><<<(count + 127) / 128, 128>>>(params(w), start, count, nullptr, out);
-    else if (variant == 2)
-      kernel<2, true><<<(count + 127) / 128, 128>>>(params(w), start, count, nullptr, out);
-    else
-      kernel<3, true><<<(count + 127) / 128, 128>>>(params(w), start, count, nullptr, out);
+    launch<true>(variant, params(w), start, count, 128, nullptr, nullptr, out);
     check(cudaGetLastError());
     check(cudaMemcpy(hashes.data(), out, size_t(count) * 32, cudaMemcpyDeviceToHost));
   } catch (...) {
@@ -264,5 +295,21 @@ std::vector<Hash> cuda_hashes(const Header &header, uint64_t start, uint32_t cou
   }
   cudaFree(out);
   return hashes;
+}
+std::vector<GpuInfo> cuda_devices() {
+  int n = 0;
+  auto err = cudaGetDeviceCount(&n);
+  if (err == cudaErrorNoDevice || err == cudaErrorInsufficientDriver)
+    return {};
+  check(err);
+  std::vector<GpuInfo> out;
+  for (int i = 0; i < n; ++i) {
+    cudaDeviceProp p{};
+    check(cudaGetDeviceProperties(&p, i));
+    char pci[32]{};
+    check(cudaDeviceGetPCIBusId(pci, sizeof(pci), i));
+    out.push_back({i, p.name, pci});
+  }
+  return out;
 }
 } // namespace yolo

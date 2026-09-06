@@ -25,13 +25,15 @@ have its notices removed. Re-evaluate the project license before such reuse.
 ## Modules
 
 - `yolo_core`: byte encoding, scalar hash oracle, target conversion, BTCB2
-  work construction, and the `Backend` interface.
+  work construction, scalar/AVX2 CPU backends, and the `Backend` interface.
 - `yolo_protocol`: deterministic Stratum session state; no device or socket I/O.
 - `yolo_cuda`: specialized BLAKE2b-256 scan and full-hash diagnostic kernels;
   compiled out for CPU-only builds.
 - `yolo_network`: connection lifecycle, verified TLS, worker scheduling,
   share submission and result accounting.
-- Executable: argument parsing and operational output.
+- `yolo_hardware`: optional NVML telemetry and explicit controls, mapped by PCI bus.
+- `yolo_ui`: independent dashboard renderer, terminal lifecycle and plain logging.
+- Executable: argument parsing, device inspection and benchmarks.
 
 The first `Work` type intentionally represents the supported 80-byte Sia work
 format. Before adding a second algorithm, introduce explicit algorithm IDs,
@@ -84,15 +86,31 @@ the host independently recomputes candidates and performs the full target test.
 Tune measured throughput, not source instruction count: block size, register
 pressure, launch overhead and generated SASS all matter. Current inspected
 kernels do not spill registers. A short benchmark is not proof of sustained
-pool performance. Two nonces per thread, scheduling/ILP variants, launch batching
-and additional precomputation remain experiments, not assumed improvements.
+pool performance. Uniform nonce-word and two/four-nonce thread variants are
+available for measured comparison; they did not improve the default on the
+initial RTX 5090. The measured winner remains the default.
+
+## CPU and device orchestration
+
+The x86-64 AVX2 backend evaluates four independent nonces per vector and dispatches
+only after a runtime capability check. The scalar implementation stays separate
+as an oracle and fallback. Full-hash diagnostics cover vector tails and nonce
+boundaries; candidate filtering is followed by scalar target verification.
+No global AVX2 compiler requirement is imposed on the executable.
+
+Each CPU worker and GPU owns a distinct nonce partition. Workers share immutable
+job snapshots, while the connection thread owns acknowledgements and device
+attribution. GPU telemetry and terminal rendering have their own threads;
+rendering does not hold the mining queue lock. The display reports network-target
+block candidates, not confirmed blocks inferred from ordinary share responses.
+Hardware writes occur only for explicit control flags.
 
 ## Subsequent backends
 
-1. Complete live CUDA acceptance and sustained rate measurements, including
-   multiple devices, job changes and reconnects.
-2. Optimize CPU scans using runtime-dispatched AVX2/AVX-512 where supported;
-   keep the scalar oracle separate. Benchmark on actual CPUs and the CPU port.
+1. Extend GPU/CPU live acceptance samples and sustained measurements across more
+   hardware, job changes and reconnects.
+2. Measure additional CPU kernels on supported hardware; AVX2 is implemented,
+   while AVX-512 and architecture-specific alternatives need separate validation.
 3. Add AMD OpenCL first if the installed driver/hardware offers a reliable
    64-bit integer path; evaluate Vulkan against the same workload. Choose using
    hardware measurements rather than assuming Vulkan is faster.

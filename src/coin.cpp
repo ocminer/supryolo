@@ -3,6 +3,36 @@
 #include <algorithm>
 #include <stdexcept>
 namespace yolo {
+Hash compact_target(const std::string &nbits) {
+  auto bytes = unhex(nbits);
+  if (bytes.size() != 4)
+    throw std::runtime_error("invalid nbits");
+  unsigned exponent = bytes[0],
+           mantissa = (unsigned(bytes[1]) << 16) | (unsigned(bytes[2]) << 8) | bytes[3];
+  if ((mantissa & 0x800000) || !mantissa || exponent > 34)
+    throw std::runtime_error("invalid compact target");
+  Hash out{};
+  if (exponent <= 3) {
+    mantissa >>= 8 * (3 - exponent);
+    for (int i = 31; i >= 28; --i) {
+      out[i] = mantissa & 255;
+      mantissa >>= 8;
+    }
+  } else
+    for (int i = 0; i < 3; ++i) {
+      int position = 32 - int(exponent) + i;
+      unsigned byte = (mantissa >> (16 - i * 8)) & 255;
+      if (position < 0) {
+        if (byte)
+          throw std::runtime_error("compact target overflow");
+      } else if (position < 32)
+        out[position] = byte;
+    }
+  if (std::all_of(out.begin(), out.end(), [](uint8_t b) { return b == 0; }))
+    throw std::runtime_error("zero compact target");
+  return out;
+}
+
 Header sia_work(const std::string &prev, const std::string &c1, const std::string &c2,
                 const std::string &en1, const std::string &en2, const std::string &time) {
   auto p = unhex(prev), a = unhex(c1), b = unhex(c2), e1 = unhex(en1), e2 = unhex(en2),

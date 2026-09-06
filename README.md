@@ -2,19 +2,22 @@
 
 A modular, open-source BTCB2 BLAKE2b miner by **ocminer**.
 
-**Development preview — not a production release.** CUDA hashing, CPU reference
-hashing and BTCB2 Stratum are implemented. Local independent hash and protocol
-tests pass. Live-pool share acceptance has not yet been validated.
+**Development preview.** NVIDIA CUDA, runtime-dispatched AVX2 CPU mining,
+BTCB2 Stratum, GPU monitoring/control and a Matrix-style terminal dashboard
+are implemented. GPU and CPU shares have been accepted by B2Pool and checked
+independently. This is not yet a production release or a complete HiveOS package.
 
-The initial backend targets NVIDIA RTX 5090. AMD OpenCL/Vulkan, optimized CPU,
-direct-node RPC solo mining and FPGA transports are planned; they are not
-implemented yet. Pool solo ports already use the same Stratum client.
+AMD OpenCL/Vulkan, direct-node RPC solo mining and FPGA backends are planned.
+Pool solo ports already use the same Stratum client.
+
+![Matrix terminal demo; all displayed mining values are simulated](docs/assets/tui-demo.png)
 
 ## Build
 
 Requirements: Linux, CMake 3.24+, a C++20 compiler, OpenSSL development files,
-and a CUDA toolkit supporting your GPU. Python 3 runs the protocol tests.
-The JSON dependency is included with its license.
+and a CUDA toolkit supporting your GPU. Python 3 runs integration tests.
+The JSON dependency is included with its license. NVIDIA telemetry uses the
+driver's NVML library at runtime; no separate NVML development package is needed.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=120
@@ -24,7 +27,7 @@ ctest --test-dir build --output-on-failure
 python3 tests/stratum_mock.py ./build/supryolo
 ```
 
-CPU-only reference build, without a CUDA toolkit:
+CPU-only build, without a CUDA toolkit:
 
 ```sh
 cmake -S . -B build-cpu -DCMAKE_BUILD_TYPE=Release -DYOLO_CUDA=OFF
@@ -34,57 +37,72 @@ ctest --test-dir build-cpu --output-on-failure
 
 ## Run
 
-Replace `YOUR_BTCB2_ADDRESS` with your payout address on the BTCB2 chain.
+Replace `YOUR_BTCB2_ADDRESS` with your BTCB2 payout address. GPU 0 only:
 
 ```sh
 ./build/supryolo --url stratum+tcp://de.b2pool.io:4444 \
-  --user YOUR_BTCB2_ADDRESS.rig1 -d 0
+  --user YOUR_BTCB2_ADDRESS.rig1 --gpu-device 0 --no-cpu
 ```
 
-Select both GPUs with `-d 0,1`. They share one pool connection and receive
-disjoint nonce ranges. GPU indices follow CUDA's visible device ordering.
-The miner does not stop other applications or alter GPU clocks.
+`--gpu-device 0,1` selects GPUs 0 and 1; omitted means **all visible GPUs**.
+CPU mining is also enabled by default. `--no-cpu` disables CPU hashing;
+`--no-gpu` disables GPUs. Giving both flags reports that no devices are enabled.
+Selected devices share a connection with separate nonce ranges.
 
-The scalar CPU reference can mine on the low-difficulty port:
+CPU-only mining on the low-difficulty port:
 
 ```sh
-./build-cpu/supryolo --cpu --url stratum+tcp://de.b2pool.io:5555 \
-  --user YOUR_BTCB2_ADDRESS.cpu1
+./build/supryolo --no-gpu --cpu-threads 15 \
+  --url stratum+tcp://de.b2pool.io:5555 --user YOUR_BTCB2_ADDRESS.cpu1
 ```
 
-B2Pool GPU pool-solo uses port **4445**, and CPU pool-solo uses **5556**.
-This is pool-mediated solo mining; direct `getblocktemplate` / `submitblock`
-mining is a separate planned job source.
+AVX2 is selected automatically when available; other CPUs use the scalar kernel.
+Choose a thread count suitable for your CPU, or omit it for automatic selection.
+B2Pool GPU pool-solo uses **4445**, CPU pool-solo **5556**. Direct-node RPC
+`getblocktemplate` / `submitblock` is a separate planned job source.
 
-`--seconds 120` limits a run. `--password x` is the default.
-TLS is available with `stratum+tls://` or `stratum+ssl://` when the endpoint
-supports it; certificate and hostname verification are enabled. B2Pool's
-listed Stratum ports use plain TCP.
+The TUI starts in an interactive terminal. Use `--no-tui` for plain output,
+`--list-devices` to inspect hardware, or `--tui-demo` for a display-only preview.
+GPU controls include `--gpu-core-clock`, `--gpu-mem-clock`, `--powerlimit` and
+`--gpu-fan-speed`. Settings change only when explicitly supplied.
+Read [device selection, controls and TUI operation](docs/OPERATIONS.md) for
+units, per-device lists, reset behavior and temperature alarms.
+
+`--seconds 120` limits a run; `--password x` is the default. TLS is available
+with `stratum+tls://` or `stratum+ssl://` when supported by the endpoint, with
+certificate and hostname verification. B2Pool's listed ports use plain TCP.
 
 User agent: `supryolo/0.1.0-dev`.
 
 ## Performance
 
-Initial **local hashing benchmark**, not a pool-estimated hashrate:
-**17.31 GH/s on one RTX 5090**, measured over 30 seconds with the default
-configuration (CUDA 13.3, architecture 120). Results depend on batch size and
-kernel variant. Sustained live-pool measurements are pending.
+Measured on the supported hardware; these are scanned hashes per elapsed
+second, not estimates from the arrival times of a few shares.
+
+| Device | Configuration | Measured rate | Measurement |
+|---|---|---|---|
+| RTX 5090 32 GB | Default CUDA settings | 17.21 GH/s | Live B2Pool, 240 seconds |
+| Ryzen 9 3950X | AVX2, 15 threads | 366.7 MH/s | Local benchmark, 10 seconds |
+| Ryzen 9 3950X | AVX2, 1 thread | 27.1 MH/s | Local benchmark, 5 seconds |
+| Ryzen 9 3950X | Scalar, 1 thread | 4.0 MH/s | Local benchmark, 5 seconds |
+
+CPU thread scaling depends on other workloads and cooling. The live GPU rate
+was measured on one card; it is not an isolated dual-GPU result. CUDA 13.3,
+architecture 120 was used. The local GPU benchmark measured 17.31 GH/s over
+30 seconds. See [validation and live acceptance](docs/VALIDATION.md).
 
 ```sh
-./build/supryolo --benchmark -d 0 --seconds 30 \
-  --block 256 --batch 67108864 --variant 3
+./build/supryolo --benchmark --no-cpu --gpu-device 0 --seconds 30
+./build/supryolo --benchmark --no-gpu --cpu-threads 15 --seconds 30
 ```
 
-`--variant 0` uses native rotations, `1` explicit PTX rotations, `2` native
-rotations with precomputed nonce-independent operations, and `3` combines
-precomputation with PTX. The default is `3`, 256 threads per block, and
-67,108,864 hashes per batch. Larger batches may increase job-switch latency.
+Default CUDA tuning is `--variant 3 --block 256 --batch 67108864`.
+Alternative kernels can be selected with `--variant`; see `--help`.
+Larger batches can increase job-switch latency. Every GPU/AVX2 candidate is
+independently rehashed and checked against the full 256-bit target before
+submission. GPU candidate-buffer overflow is an explicit error.
 
-Each GPU candidate is checked against the full 256-bit target on the CPU
-before submission. Candidate-buffer overflow is an error, never silent loss.
-
-See [architecture and implementation choices](docs/ARCHITECTURE.md),
-[validation](docs/VALIDATION.md), and [third-party notices](THIRD_PARTY.md).
+See [architecture](docs/ARCHITECTURE.md) and [third-party notices](THIRD_PARTY.md).
 
 ## License
 
