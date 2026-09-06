@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-Supryolo-NC-1.0
 #include "yolo/amd.hpp"
 #include "yolo/hardware.hpp"
-#include <dlfcn.h>
+#include "yolo/dynamic.hpp"
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -24,7 +24,7 @@ struct GpuManagement::Impl {
   std::string unavailable;
   bool initialized = false;
   template <typename F> F symbol(const char *name) {
-    return library ? reinterpret_cast<F>(dlsym(library, name)) : nullptr;
+    return library ? reinterpret_cast<F>(library_symbol(library, name)) : nullptr;
   }
   std::string error(int code) {
     auto f = symbol<const char *(*)(int)>("nvmlErrorString");
@@ -41,7 +41,7 @@ struct GpuManagement::Impl {
     checked(f(args...), name);
   }
   explicit Impl(std::vector<GpuInfo> d) : devices(std::move(d)), handles(devices.size(), nullptr) {
-    library = dlopen("libnvidia-ml.so.1", RTLD_NOW | RTLD_LOCAL);
+    library = load_library("libnvidia-ml.so.1", L"nvml.dll");
     if (!library) {
       unavailable = "NVML library unavailable";
       return;
@@ -69,7 +69,7 @@ struct GpuManagement::Impl {
         f();
     }
     if (library)
-      dlclose(library);
+      unload_library(library);
   }
   std::optional<unsigned> read(const char *name, Handle h) {
     unsigned x = 0;

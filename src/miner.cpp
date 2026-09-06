@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-Supryolo-NC-1.0
+#include "yolo/net.hpp"
+#include "yolo/api.hpp"
 #include "yolo/hardware.hpp"
 #include "yolo/stratum.hpp"
 #include "yolo/ui.hpp"
@@ -7,18 +9,15 @@
 #include <chrono>
 #include <csignal>
 #include <deque>
-#include <fcntl.h>
 #include <iostream>
 #include <mutex>
-#include <netdb.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
-#include <poll.h>
+#ifndef _WIN32
 #include <sched.h>
+#endif
 #include <stdexcept>
-#include <sys/socket.h>
 #include <thread>
-#include <unistd.h>
 #include <unordered_map>
 namespace yolo {
 using json = nlohmann::json;
@@ -27,7 +26,7 @@ using Clock = std::chrono::steady_clock;
 volatile std::sig_atomic_t interrupted = 0;
 void interrupt(int) { interrupted = 1; }
 class Socket {
-  int fd = -1;
+  net::Socket fd = net::invalid;
   SSL_CTX *ctx = nullptr;
   SSL *ssl = nullptr;
   std::string buffer;
@@ -36,15 +35,15 @@ class Socket {
       SSL_free(ssl);
     if (ctx)
       SSL_CTX_free(ctx);
-    if (fd >= 0)
-      ::close(fd);
+    if (fd != net::invalid)
+      net::close(fd);
     ssl = nullptr;
     ctx = nullptr;
-    fd = -1;
+    fd = net::invalid;
   }
   void wait(short events) {
-    pollfd p{fd, events, 0};
-    int r = ::poll(&p, 1, 10000);
+    net::Poll p{fd, events, 0};
+    int r = net::poll(&p, 1, 10000);
     if (r <= 0 || p.revents & (POLLERR | POLLHUP | POLLNVAL))
       throw std::runtime_error("pool I/O timeout or disconnect");
   }
@@ -52,6 +51,7 @@ class Socket {
 public:
   explicit Socket(const std::string &url) {
     try {
+      net::init();
       bool tls = url.starts_with("stratum+tls://") || url.starts_with("stratum+ssl://");
       if (!tls && !url.starts_with("stratum+tcp://"))
         throw std::runtime_error("use stratum+tcp:// or stratum+tls://");
@@ -71,25 +71,29 @@ public:
         throw std::runtime_error("pool DNS failed");
       std::unique_ptr<addrinfo, decltype(&freeaddrinfo)> list(raw, freeaddrinfo);
       for (auto a = raw; a; a = a->ai_next) {
-        fd = ::socket(a->ai_family, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, a->ai_protocol);
-        if (fd < 0)
+        fd = net::socket(a->ai_family);
+        if (fd == net::invalid)
           continue;
         int c = ::connect(fd, a->ai_addr, a->ai_addrlen);
         if (c == 0)
           break;
-        if (errno == EINPROGRESS) {
-          pollfd p{fd, POLLOUT, 0};
-          if (::poll(&p, 1, 5000) > 0) {
+        if (net::again()) {
+          net::Poll p{fd, POLLOUT, 0};
+          if (net::poll(&p, 1, 5000) > 0) {
             int error = 0;
+            #ifdef _WIN32
+            int n = sizeof(error);
+#else
             socklen_t n = sizeof(error);
-            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &n) == 0 && error == 0)
+#endif
+            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, reinterpret_cast<char *>(&error), &n) == 0 && error == 0)
               break;
           }
         }
-        ::close(fd);
-        fd = -1;
+        net::close(fd);
+        fd = net::invalid;
       }
-      if (fd < 0)
+      if (fd == net::invalid)
         throw std::runtime_error("pool connection failed");
       if (tls) {
         ctx = SSL_CTX_new(TLS_client_method());
@@ -99,7 +103,7 @@ public:
         SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
         ssl = SSL_new(ctx);
         if (!ssl || SSL_set_tlsext_host_name(ssl, host.c_str()) != 1 ||
-            SSL_set1_host(ssl, host.c_str()) != 1 || SSL_set_fd(ssl, fd) != 1)
+            SSL_set1_host(ssl, host.c_str()) != 1 || SSL_set_fd(ssl, static_cast<int>(fd)) != 1)
           throw std::runtime_error("TLS initialization failed");
         for (;;) {
           int n = SSL_connect(ssl);
@@ -125,7 +129,7 @@ public:
     size_t off = 0;
     while (off < s.size()) {
       int n = ssl ? SSL_write(ssl, s.data() + off, int(s.size() - off))
-                  : ::send(fd, s.data() + off, s.size() - off, MSG_NOSIGNAL);
+                  : ::send(fd, s.data() + off, static_cast<int>(s.size() - off), net::send_flags);
       if (n > 0) {
         off += n;
         continue;
@@ -140,10 +144,10 @@ public:
           wait(POLLOUT);
           continue;
         }
-      } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      } else if (net::again()) {
         wait(POLLOUT);
         continue;
-      } else if (errno == EINTR)
+      } else if (net::interrupted())
         continue;
       throw std::runtime_error("pool send failed");
     }
@@ -182,9 +186,9 @@ public:
           wait(POLLOUT);
           continue;
         }
-      } else if (errno == EAGAIN || errno == EWOULDBLOCK)
+      } else if (net::again())
         break;
-      else if (errno == EINTR)
+      else if (net::interrupted())
         continue;
       throw std::runtime_error("pool receive failed");
     }
@@ -208,11 +212,15 @@ struct Slot {
 struct SignalRestore {
   void (*oldint)(int) = std::signal(SIGINT, interrupt);
   void (*oldterm)(int) = std::signal(SIGTERM, interrupt);
+#ifndef _WIN32
   void (*oldpipe)(int) = std::signal(SIGPIPE, SIG_IGN);
+#endif
   ~SignalRestore() {
     std::signal(SIGINT, oldint);
     std::signal(SIGTERM, oldterm);
+#ifndef _WIN32
     std::signal(SIGPIPE, oldpipe);
+#endif
   }
 };
 std::string reject_reason(const json &message) {
@@ -247,11 +255,15 @@ int mine(const MineOptions &o) {
     throw std::runtime_error("No enabled GPU devices available; CPU disabled");
   unsigned cpu_threads = o.no_cpu ? 0 : o.cpu_threads;
   if (!o.no_cpu && !cpu_threads) {
+#ifndef _WIN32
     cpu_set_t mask;
     CPU_ZERO(&mask);
     unsigned logical = sched_getaffinity(0, sizeof(mask), &mask) == 0
                            ? CPU_COUNT(&mask)
                            : std::max(1u, std::thread::hardware_concurrency());
+#else
+    unsigned logical = std::max(1u,std::thread::hardware_concurrency());
+#endif
     cpu_threads = std::max(1, int(logical / 2) - int(selected.size()) - 1);
   }
   if (cpu_threads > 128)
@@ -260,7 +272,8 @@ int mine(const MineOptions &o) {
   auto control_events = hardware.apply(o.controls);
   interrupted = 0;
   SignalRestore signals;
-  Dashboard ui(o.tui);
+  ApiServer api(o.api_port);
+  Dashboard ui(o.tui, o.log_file);
   DashboardView view;
   view.pool = o.url;
   view.worker = o.user;
@@ -274,6 +287,7 @@ int mine(const MineOptions &o) {
     DeviceView d;
     d.label = "GPU" + std::to_string(selected[i].index);
     d.name = selected[i].name;
+    d.pci_bus = selected[i].pci_bus;
     view.devices.push_back(d);
     auto slot = std::make_unique<Slot>();
     slot->row = i;
@@ -369,6 +383,7 @@ int mine(const MineOptions &o) {
     }
     last_update = now;
     ui.update(view);
+    api.update(view);
   };
   while (!expired() && !fatal) {
     try {
@@ -378,7 +393,7 @@ int mine(const MineOptions &o) {
       StratumState state;
       socket.send({{"id", 1},
                    {"method", "mining.subscribe"},
-                   {"params", json::array({"supryolo/0.1.0-dev"})}});
+                   {"params", json::array({"supryolo/0.1.0"})}});
       socket.send(
           {{"id", 2}, {"method", "mining.extranonce.subscribe"}, {"params", json::array()}});
       socket.send({{"id", 3},

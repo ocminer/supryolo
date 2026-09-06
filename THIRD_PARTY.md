@@ -12,3 +12,10 @@ The first-party scalar and CUDA BLAKE2b implementations follow
 [RFC 7693](https://www.rfc-editor.org/rfc/rfc7693). The repositories discussed in
 `docs/ARCHITECTURE.md` were studied as references; their application code is not
 vendored here. Future source reuse needs an explicit provenance/license review.
+
+Release packages also carry runtime dependency notices in `third_party/runtime`.
+Linux executables statically link OpenSSL (Apache-2.0) and GCC runtime libraries
+(GPL with the GCC Runtime Library Exception). CUDA runtime redistribution follows
+NVIDIA's toolkit license. Windows packages carry the required MinGW runtime and
+OpenSSL DLLs with their original notices. These components are excluded from the
+first-party noncommercial restrictions.

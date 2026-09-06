@@ -1,0 +1,59 @@
+name: Windows build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['src/**', 'include/**', 'tests/**', 'CMakeLists.txt', 'packaging/**', '.github/workflows/windows.yml']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-opencl-headers mingw-w64-ucrt-x86_64-python
+            zip
+      - name: Build native OpenCL and AVX2 executable
+        run: |
+          cmake -S . -B build-windows -G Ninja -DCMAKE_BUILD_TYPE=Release -DYOLO_CUDA=OFF -DYOLO_OPENCL=ON -DCMAKE_CXX_FLAGS="-ffile-prefix-map=$PWD=."
+          cmake --build build-windows --parallel 4
+          ctest --test-dir build-windows --output-on-failure
+          python tests/stratum_mock.py build-windows/supryolo.exe --cpu
+      - name: Package executable and runtime dependencies
+        run: |
+          mkdir -p dist/supryolo/third_party/nlohmann
+          cp build-windows/supryolo.exe dist/supryolo/
+          # Include only dependencies actually resolved by the executable.
+          ldd build-windows/supryolo.exe | awk '/\/ucrt64\/bin\// {print $3}' | while read -r lib; do cp "$lib" dist/supryolo/; done
+          cp /ucrt64/etc/ssl/certs/ca-bundle.crt dist/supryolo/
+          cp packaging/windows/start.cmd LICENSE THIRD_PARTY.md README.md dist/supryolo/
+          cp third_party/nlohmann/LICENSE.MIT dist/supryolo/third_party/nlohmann/
+          cp -r docs dist/supryolo/
+          mkdir -p dist/supryolo/third_party/runtime
+          for package in gcc gcc-libs openssl ca-certificates p11-kit libffi libwinpthread; do
+            if [ -d "/ucrt64/share/licenses/$package" ]; then
+              cp -r "/ucrt64/share/licenses/$package" dist/supryolo/third_party/runtime/
+            fi
+          done
+          # GCC Runtime Library Exception permits these linked runtime distributions.
+          strip dist/supryolo/supryolo.exe
+          cd dist
+          zip -qr supryolo-0.1.0-windows-x86_64.zip supryolo
+          sha256sum supryolo-0.1.0-windows-x86_64.zip > WINDOWS-SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: supryolo-windows
+          path: |
+            dist/supryolo-0.1.0-windows-x86_64.zip
+            dist/WINDOWS-SHA256SUMS
+          if-no-files-found: error

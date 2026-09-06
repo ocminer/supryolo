@@ -17,6 +17,7 @@ struct DeviceView {
   double hashes_per_second = 0;
   uint64_t hashes = 0, accepted = 0, rejected = 0, stale = 0;
   GpuReadings sensors;
+  std::string pci_bus;
 };
 struct DashboardView {
   std::string coin = "BTCB2", pool, worker, state = "CONNECTING", difficulty = "--";
@@ -35,7 +36,7 @@ class Dashboard {
 
 public:
   // mode: auto, on, off. Output redirected to a file always uses plain logs.
-  explicit Dashboard(const std::string &mode = "auto");
+  explicit Dashboard(const std::string &mode = "auto", const std::string &log_file = "");
   ~Dashboard();
   void update(const DashboardView &);
   void event(std::string message, Severity severity = Severity::info);

@@ -9,7 +9,7 @@
 #include <bit>
 #include <chrono>
 #include <cstdio>
-#include <dlfcn.h>
+#include "yolo/dynamic.hpp"
 #include <set>
 #include <stdexcept>
 namespace yolo {
@@ -34,13 +34,13 @@ struct Api {
                   FUNCTION(clEnqueueReadBuffer) FUNCTION(clEnqueueNDRangeKernel) FUNCTION(clFinish)
 #undef FUNCTION
                       Api() {
-    library = dlopen("libOpenCL.so.1", RTLD_NOW | RTLD_LOCAL);
+    library = load_library("libOpenCL.so.1", L"OpenCL.dll");
     if (!library)
       return;
 #define LOAD(name)                                                                                 \
-  name = reinterpret_cast<decltype(name)>(dlsym(library, #name));                                  \
+  name = reinterpret_cast<decltype(name)>(library_symbol(library, #name));                                  \
   if (!name) {                                                                                     \
-    dlclose(library);                                                                              \
+    unload_library(library);                                                                              \
     library = nullptr;                                                                             \
     return;                                                                                        \
   }
@@ -59,7 +59,7 @@ struct Api {
   }
   ~Api() {
     if (library)
-      dlclose(library);
+      unload_library(library);
   }
 };
 Api &api() {

@@ -6,3 +6,6 @@
 .env*
 *credentials*
 *.local.json
+/dist*/
+__pycache__/
+*.pyc

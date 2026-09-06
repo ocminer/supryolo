@@ -10,7 +10,7 @@ std::vector<GpuInfo> gpu_devices(const std::string &mode) {
   for (auto &d : out)
     d.backend_index = d.index;
   if (mode != "cuda")
-    for (auto d : opencl_devices(mode == "auto")) {
+    for (auto d : opencl_devices(mode == "auto" && !out.empty())) {
       d.index = int(out.size());
       out.push_back(d);
     }

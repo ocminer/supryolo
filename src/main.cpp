@@ -45,7 +45,7 @@ std::vector<unsigned> numbers(const std::string &text, unsigned maximum) {
 }
 void usage() {
   std::cout
-      << "supryolo/0.1.0-dev\n"
+      << "supryolo/0.1.0\n"
          "Mine: --url stratum+tcp://de.b2pool.io:4444 --user ADDRESS.worker\n"
          "Devices: --gpu-device 0,1 (alias -d; default all), --no-gpu, --no-cpu\n"
          "GPU backend: --gpu-backend auto|cuda|opencl (auto: CUDA plus AMD OpenCL)\n"
@@ -55,6 +55,7 @@ void usage() {
          "              --gpu-fan-speed PERCENT (one value or comma-separated per selected GPU)\n"
          "              0 resets that setting; explicit settings persist until changed\n"
          "Display: --tui --no-tui --gpu-temp-warn 75 --gpu-temp-alarm 85\n"
+         "API: --api-port N (loopback HTTP, 0 disables); --log-file PATH\n"
          "Inspect: --list-devices --tui-demo [--seconds 10]\n"
          "Benchmark: --benchmark --no-cpu --gpu-device 0 --seconds 30\n"
          "OpenCL tuning: auto selects AMD variant 3; --opencl-variant 0 (native), 1 "
@@ -123,6 +124,10 @@ int main(int argc, char **argv) {
         o.url = value();
       else if (a == "--user")
         o.user = value();
+      else if (a == "--log-file")
+        o.log_file = value();
+      else if (a == "--api-port")
+        o.api_port = integer(value(), 65535);
       else if (a == "--password")
         o.password = value();
       else if (a == "--gpu-core-clock")
@@ -146,7 +151,7 @@ int main(int argc, char **argv) {
       else if (a == "--tui-demo")
         demo = true;
       else if (a == "--version") {
-        std::cout << "supryolo/0.1.0-dev\n";
+        std::cout << "supryolo/0.1.0\n";
         return 0;
       } else if (a == "--help" || a == "-h")
         help = true;
@@ -181,7 +186,7 @@ int main(int argc, char **argv) {
       v.rejected = 1;
       v.devices = {{"GPU0", "NVIDIA RTX 5090", 17.3e9, 0, 23, 0, 0, {}},
                    {"GPU1", "NVIDIA RTX 5090", 17.2e9, 0, 19, 1, 0, {}},
-                   {"CPU", "CPU SIMD x8", 40e6, 0, 0, 0, 0, {}}};
+                   {"CPU", "CPU SIMD x8", 40e6, 0, 0, 0, 0, {}, {}}};
       v.devices[0].sensors.temperature = 62;
       v.devices[0].sensors.fan_percent = 65;
       v.devices[0].sensors.core_mhz = 2800;

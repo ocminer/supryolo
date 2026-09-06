@@ -6,17 +6,25 @@
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
-#include <fcntl.h>
 #include <iomanip>
+#include <fstream>
 #include <iostream>
 #include <mutex>
-#include <poll.h>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <conio.h>
+#else
+#include <fcntl.h>
 #include <sys/ioctl.h>
 #include <termios.h>
-#include <thread>
 #include <unistd.h>
+#endif
 namespace yolo {
 std::string console_safe(const std::string &s) {
   std::string out;
@@ -117,7 +125,7 @@ std::string render_dashboard(const DashboardView &v, int width, int height, doub
     int top = 9, log_h = std::max(7, height / 3), log_y = height - log_h - 1,
         devices_h = log_y - top, left = std::max(38, width * 45 / 100);
     box(0, 0, left, top, "LINK // " + v.coin);
-    box(left, 0, width - left, top, "SUPRYOLO // 0.1.0-dev");
+    box(left, 0, width - left, top, "SUPRYOLO // 0.1.0");
     put(2, 1, v.state + "  UP " + duration(v.elapsed), v.state == "MINING" ? bright : yellow,
         left - 4);
     put(2, 2, v.pool, cyan, left - 4);
@@ -212,19 +220,38 @@ struct Dashboard::Impl {
   std::deque<Event> queued;
   std::atomic<bool> quit{false};
   bool active = false;
+  std::ofstream log;
   std::jthread thread;
+#ifdef _WIN32
+  HANDLE output=GetStdHandle(STD_OUTPUT_HANDLE);
+  DWORD old_output=0;
+  bool output_mode_changed=false;
+#else
   termios old_term{};
   int old_flags = -1;
+#endif
   bool raw = false;
   size_t offset = 0;
-  explicit Impl(const std::string &mode) {
+  explicit Impl(const std::string &mode, const std::string &log_file) {
+    if (!log_file.empty()) {
+      log.open(log_file, std::ios::app);
+      if (!log) throw std::runtime_error("Cannot open miner log file");
+    }
     if (mode != "auto" && mode != "on" && mode != "off")
       throw std::runtime_error("TUI mode must be auto, on or off");
+#ifdef _WIN32
+    active=mode!="off" && GetConsoleMode(output,&old_output) &&
+           SetConsoleMode(output,old_output|ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    output_mode_changed=active;
+    raw=active;
+#else
     auto term = std::getenv("TERM");
     active = mode != "off" && isatty(STDOUT_FILENO) &&
              (mode == "on" || (term && std::string(term) != "dumb"));
+#endif
     if (active) {
       std::cout << "\033[?1049h\033[?25l\033[2J" << std::flush;
+#ifndef _WIN32
       if (isatty(STDIN_FILENO) && tcgetattr(STDIN_FILENO, &old_term) == 0) {
         auto t = old_term;
         t.c_lflag &= ~(ICANON | ECHO);
@@ -237,6 +264,7 @@ struct Dashboard::Impl {
             fcntl(STDIN_FILENO, F_SETFL, old_flags | O_NONBLOCK);
         }
       }
+#endif
     }
     try {
       thread = std::jthread([this](std::stop_token stop) {
@@ -250,10 +278,18 @@ struct Dashboard::Impl {
             lines.swap(queued);
           }
           auto now = std::chrono::steady_clock::now();
+          if (log.is_open()) {
+            for (const auto &e : lines) log << e.time << " " << console_safe(e.message) << '\n';
+            log.flush();
+          }
           if (active) {
             if (raw) {
               char c;
+#ifdef _WIN32
+              while (_kbhit()) { c=static_cast<char>(_getch());
+#else
               while (read(STDIN_FILENO, &c, 1) == 1) {
+#endif
                 if (c == 'q' || c == 'Q')
                   quit = true;
                 if (c == 'j')
@@ -262,10 +298,18 @@ struct Dashboard::Impl {
                   --offset;
               }
             }
+#ifdef _WIN32
+            CONSOLE_SCREEN_BUFFER_INFO info{};
+            GetConsoleScreenBufferInfo(output,&info);
+            int width=info.srWindow.Right-info.srWindow.Left+1;
+            int height=info.srWindow.Bottom-info.srWindow.Top+1;
+#else
             winsize size{};
             ioctl(STDOUT_FILENO, TIOCGWINSZ, &size);
+            int width=size.ws_col ? size.ws_col:100, height=size.ws_row ? size.ws_row:30;
+#endif
             std::cout << render_dashboard(
-                             copy, size.ws_col ? size.ws_col : 100, size.ws_row ? size.ws_row : 30,
+                             copy, width, height,
                              std::chrono::duration<double>(now - start).count(), offset)
                       << std::flush;
           } else {
@@ -299,12 +343,14 @@ struct Dashboard::Impl {
     }
   }
   void restore() {
+#ifndef _WIN32
     if (raw) {
       tcsetattr(STDIN_FILENO, TCSANOW, &old_term);
       if (old_flags >= 0)
         fcntl(STDIN_FILENO, F_SETFL, old_flags);
       raw = false;
     }
+#endif
     if (active)
       std::cout << "\033[0m\033[?25h\033[?1049l" << std::flush;
   }
@@ -313,9 +359,12 @@ struct Dashboard::Impl {
     if (thread.joinable())
       thread.join();
     restore();
+#ifdef _WIN32
+    if(output_mode_changed) SetConsoleMode(output,old_output);
+#endif
   }
 };
-Dashboard::Dashboard(const std::string &mode) : impl(std::make_unique<Impl>(mode)) {}
+Dashboard::Dashboard(const std::string &mode, const std::string &log_file) : impl(std::make_unique<Impl>(mode, log_file)) {}
 Dashboard::~Dashboard() = default;
 void Dashboard::update(const DashboardView &view) {
   std::lock_guard lock(impl->mutex);

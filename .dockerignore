@@ -1,0 +1,13 @@
+**
+!CMakeLists.txt
+!LICENSE
+!THIRD_PARTY.md
+!README.md
+!start.sh
+!include/**
+!src/**
+!tests/**
+!third_party/**
+!packaging/**
+!scripts/**
+!docs/**

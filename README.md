@@ -2,10 +2,11 @@
 
 A modular, source-available BTCB2 BLAKE2b miner by **ocminer**.
 
-**Development preview.** NVIDIA CUDA, AMD OpenCL, runtime-dispatched AVX2 CPU mining,
+**Version 0.1.0.** NVIDIA CUDA, AMD OpenCL, runtime-dispatched AVX2 CPU mining,
 BTCB2 Stratum, GPU monitoring/control and a Matrix-style terminal dashboard
 are implemented. GPU and CPU shares have been accepted by B2Pool and checked
-independently. This is not yet a production release or a complete HiveOS package.
+independently. See [binary downloads, HiveOS, mmpOS, Docker and Windows setup](docs/RELEASES.md)
+for packages, requirements and platform validation limits.
 
 The same binary runs on NVIDIA and AMD rigs. OpenCL hashing and live shares
 have been validated on RX 7600 XT, RX 7900 XTX and Vega 20 hardware.
@@ -16,6 +17,17 @@ Pool solo ports already use the same Stratum client.
 
 [Build](#build) · [Quick start](#quick-start) · [Performance](#performance) ·
 [Command examples](#command-examples) · [Common mistakes](#common-mistakes)
+
+## Downloads
+
+Get [release packages](https://github.com/ocminer/supryolo/releases/latest).
+For Linux, extract the archive, edit the `WALLET` line in `start.sh`, then run
+`./start.sh`. It starts B2Pool GPU mining with all cards and CPU disabled.
+The script refuses to run until you replace the address placeholder.
+
+See [installation instructions](docs/RELEASES.md) for HiveOS flight sheets,
+mmpOS profiles, Docker commands and the Windows package. Linux binaries need
+glibc 2.35+; Windows currently uses OpenCL, not CUDA.
 
 ## Build
 
@@ -99,7 +111,7 @@ Pool-solo still connects to a pool. Direct-node RPC solo is not implemented.
 change them to TLS URLs. Other endpoints can use `stratum+tls://` or
 `stratum+ssl://` when they support TLS; certificate verification is enabled.
 
-User agent: `supryolo/0.1.0-dev`.
+User agent: `supryolo/0.1.0`.
 
 ## Performance
 
