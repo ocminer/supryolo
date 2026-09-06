@@ -1,6 +1,9 @@
 name: Publish v0.1.0 release
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish.yml']
 permissions:
   contents: write
   actions: read
