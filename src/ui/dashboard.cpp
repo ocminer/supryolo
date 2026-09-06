@@ -63,7 +63,11 @@ std::string value(std::optional<unsigned> n, const std::string &unit = "") {
 std::string stamp() {
   std::time_t t = std::time(nullptr);
   std::tm tm{};
+#ifdef _WIN32
+  localtime_s(&tm, &t);
+#else
   localtime_r(&t, &tm);
+#endif
   char out[16];
   std::strftime(out, sizeof(out), "%H:%M:%S", &tm);
   return out;

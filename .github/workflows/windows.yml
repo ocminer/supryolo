@@ -33,8 +33,7 @@ jobs:
         run: |
           mkdir -p dist/supryolo/third_party/nlohmann
           cp build-windows/supryolo.exe dist/supryolo/
-          # Include only dependencies actually resolved by the executable.
-          ldd build-windows/supryolo.exe | awk '/\/ucrt64\/bin\// {print $3}' | while read -r lib; do cp "$lib" dist/supryolo/; done
+          python scripts/windows-dependencies.py dist/supryolo/supryolo.exe
           cp /ucrt64/etc/ssl/certs/ca-bundle.crt dist/supryolo/
           cp packaging/windows/start.cmd LICENSE THIRD_PARTY.md README.md dist/supryolo/
           cp third_party/nlohmann/LICENSE.MIT dist/supryolo/third_party/nlohmann/
@@ -45,11 +44,20 @@ jobs:
               cp -r "/ucrt64/share/licenses/$package" dist/supryolo/third_party/runtime/
             fi
           done
+          cp -r /ucrt64/share/licenses/. dist/supryolo/third_party/runtime/
           # GCC Runtime Library Exception permits these linked runtime distributions.
           strip dist/supryolo/supryolo.exe
           cd dist
           zip -qr supryolo-0.1.0-windows-x86_64.zip supryolo
           sha256sum supryolo-0.1.0-windows-x86_64.zip > WINDOWS-SHA256SUMS
+      - name: Verify packaged EXE without the build toolchain on PATH
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          & ./dist/supryolo/supryolo.exe --version
+          if ($LASTEXITCODE -ne 0) { throw "Packaged EXE cannot start" }
+          & ./dist/supryolo/supryolo.exe --benchmark --no-gpu --cpu-threads 1 --seconds 1
+          if ($LASTEXITCODE -ne 0) { throw "Packaged CPU benchmark failed" }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: supryolo-windows
