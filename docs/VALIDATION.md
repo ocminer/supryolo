@@ -129,3 +129,25 @@ is validated on the listed rigs; broader hardware and driver coverage is pending
 CUDA defaults to architecture 120; other GPUs require an appropriate build
 and their own correctness/performance validation. There is no production-support
 claim or released binary package yet.
+
+## v0.1.0 release packaging checks
+
+The Linux release build uses CUDA 12.8.1 and an Ubuntu 22.04 baseline, with
+static OpenSSL and GCC runtimes. Eight CTest checks pass, including loopback
+HTTP API bounds, read-only routes, share accounting and HiveOS/mmpOS adapter
+fixtures. Launcher tests cover placeholder refusal, device selection, CPU
+pool selection and treating configuration as data rather than shell code.
+
+The release executable passed 57,344 CUDA full-hash comparisons on RTX 5090
+and 8,220 OpenCL comparisons on RX 7900 XTX. New live B2Pool samples accepted
+5/5 NVIDIA shares (90 seconds, GPU port) and 90/90 AMD shares (60 seconds,
+low-difficulty port), with no rejected, stale or pending shares. Independent
+replay verified every submitted hash. The NVIDIA live rate was 17.22 GH/s.
+The Docker image also passed a local Stratum test with independently checked
+GPU shares and a GPU benchmark around 17.35 GH/s. Short benchmarks do not
+replace sustained thermal measurements.
+
+HiveOS/mmpOS callbacks are tested against their documented interface formats;
+no complete deployment on those installed operating systems has been observed.
+Windows CI provides native build, CPU protocol and monitoring checks, but no
+physical Windows GPU validation. These limits are stated in the download guide.

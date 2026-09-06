@@ -109,24 +109,24 @@ The default command prints help; it never mines to a built-in wallet.
 For NVIDIA, install NVIDIA Container Toolkit on the host first.
 
 ```sh
-docker run --rm -it --gpus all ocminersupr/supryolo:0.1.0 \
+docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all ocminersupr/supryolo:0.1.0 \
   --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.rig1 --no-cpu
 ```
 
 Expose just host GPU 0 to the container:
 
 ```sh
-docker run --rm -it --gpus '"device=0"' ocminersupr/supryolo:0.1.0 \
+docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 ocminersupr/supryolo:0.1.0 \
   --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.rig1 \
   --no-cpu --gpu-device 0
 ```
 
 Container GPU numbering follows the devices visible inside the container.
-For CPU-only mining omit `--gpus` and use `--no-gpu --cpu-threads 4` with port 5555.
+For CPU-only mining omit `--runtime=nvidia`, set `-e NVIDIA_VISIBLE_DEVICES=void`, and use `--no-gpu --cpu-threads 4` with port 5555.
 To use the simple starter script instead:
 
 ```sh
-docker run --rm -it --gpus all -e WALLET=YOUR_BTCB2_ADDRESS \
+docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all -e WALLET=YOUR_BTCB2_ADDRESS \
   --entrypoint ./start.sh ocminersupr/supryolo:0.1.0
 ```
 

@@ -120,7 +120,7 @@ second, not estimates from the arrival times of a few shares.
 
 | Device | Configuration | Measured rate | Measurement |
 |---|---|---|---|
-| RTX 5090 32 GB | Default CUDA settings | 17.21 GH/s | Live B2Pool, 240 seconds |
+| RTX 5090 32 GB | Release CUDA settings | 17.22 GH/s | Live B2Pool, 90 seconds |
 | RX 7900 XTX 24 GB | Default OpenCL settings | 5.783 GH/s | Live B2Pool, 300 seconds |
 | RX 7600 XT 16 GB | OpenCL, variant 3, group 64 | 2.09 GH/s | Local benchmark, 4 seconds |
 | Instinct MI50/MI60, Vega 20 16 GB | OpenCL, variant 3, group 64 | 2.75 GH/s | Local benchmark, 4 seconds |
@@ -134,8 +134,8 @@ run, which was stopped early; cooling needs attention for sustained operation. A
 3581.0 (Navi 31) and 3649.0 (Navi 33/Vega 20) were used.
 CPU thread scaling depends on other workloads and cooling. The RTX 5090 live rate
 was measured on one card; it is not an isolated dual-GPU result. CUDA 13.3,
-architecture 120 was used. The local GPU benchmark measured 17.31 GH/s over
-30 seconds. See [validation and live acceptance](docs/VALIDATION.md).
+architecture 120 was used for the initial measurements. The v0.1.0 release
+uses CUDA 12.8.1; its local RTX 5090 sample measured 17.35 GH/s over 10 seconds. See [validation and live acceptance](docs/VALIDATION.md).
 
 ```sh
 ./build/supryolo --benchmark --no-cpu --gpu-device 0 --seconds 30
