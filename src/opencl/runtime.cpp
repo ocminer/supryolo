@@ -80,6 +80,12 @@ std::string string_info(cl_device_id d, cl_device_info key) {
     s.pop_back();
   return s;
 }
+// AMD device-attribute-query PCIe response ABI; some Khronos headers omit its C type.
+struct AmdPciTopology {
+  cl_uint type;
+  cl_uchar reserved[17], bus, device, function;
+};
+static_assert(sizeof(AmdPciTopology) == 24);
 struct Device {
   cl_device_id handle;
   GpuInfo info;
@@ -124,14 +130,14 @@ std::vector<Device> enumerate() {
                       bus.pci_function);
         pci = b;
       } else if (vendor == 0x1002) {
-        cl_device_topology_amd topology{};
+        AmdPciTopology topology{};
         if (query(d, CL_DEVICE_TOPOLOGY_AMD, topology) &&
-            topology.raw.type == CL_DEVICE_TOPOLOGY_TYPE_PCIE_AMD) {
+            topology.type == 1) {
           char b[32];
           std::snprintf(b, sizeof b, "0000:%02x:%02x.%x",
-                        static_cast<unsigned char>(topology.pcie.bus),
-                        static_cast<unsigned char>(topology.pcie.device),
-                        static_cast<unsigned char>(topology.pcie.function));
+                        static_cast<unsigned char>(topology.bus),
+                        static_cast<unsigned char>(topology.device),
+                        static_cast<unsigned char>(topology.function));
           pci = b;
         }
       }
