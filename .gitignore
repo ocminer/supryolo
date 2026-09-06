@@ -1,0 +1,8 @@
+/build*/
+/private/
+/research/
+/CONTINUE-HERE.md
+*.log
+.env*
+*credentials*
+*.local.json
