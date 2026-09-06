@@ -18,30 +18,26 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: v0.1.0
-      - name: Build and test tagged Linux source
+      - name: Retrieve the exact GPU-validated Linux binary
         run: |
           set -euo pipefail
-          docker build -t supryolo-builder:12.8 -f packaging/linux/Dockerfile.build .
-          docker run --rm --entrypoint bash -v "$GITHUB_WORKSPACE:/src" -w /src supryolo-builder:12.8 -c '
-            cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90;120" \
-              -DOPENSSL_USE_STATIC_LIBS=TRUE \
-              -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc" \
-              -DCMAKE_CXX_FLAGS="-ffile-prefix-map=/src=. -fdebug-prefix-map=/src=."
-            cmake --build build-release -j 2
-            ctest --test-dir build-release --output-on-failure'
-          # Match the exact binary already validated on real GPUs and B2Pool.
-          echo '4bdde9fef55c8868be141851487ef1cb1621b9439bc63786c85d132dd0c798b7  build-release/supryolo' | sha256sum -c -
-      - name: Package Linux and rig OS assets with runtime notices
+          IMAGE=ocminersupr/supryolo@sha256:c15299466ea0a5ed1c9234cd76b2af3d0b7c07536acb5f4c2abc53265a2993ed
+          docker pull "$IMAGE"
+          CID=$(docker create --entrypoint /bin/true "$IMAGE")
+          trap 'docker rm -f "$CID" >/dev/null' EXIT
+          mkdir -p dist/verified
+          docker cp "$CID:/opt/supryolo/." dist/verified/
+          echo '80b674bbc7856d6eee6a690fc1d693a02f07c432a10e53f43e55a440a4c6a795  dist/verified/supryolo' | sha256sum -c -
+          dist/verified/supryolo --version
+          python3 tests/terminal.py dist/verified/supryolo
+          python3 tests/stratum_mock.py dist/verified/supryolo --cpu
+          python3 tests/packaging.py
+      - name: Package Linux and rig OS assets with original runtime notices
         run: |
           set -euo pipefail
-          mkdir -p dist/runtime
-          docker run --rm --entrypoint cat supryolo-builder:12.8 /usr/share/doc/libssl-dev/copyright > dist/runtime/OpenSSL.txt
-          docker run --rm --entrypoint cat supryolo-builder:12.8 /usr/share/doc/gcc-11-base/copyright > dist/runtime/GCC.txt
-          docker run --rm --entrypoint cat supryolo-builder:12.8 /usr/share/doc/cuda-cudart-12-8/copyright > dist/runtime/CUDA.txt
-          export RUNTIME_LICENSE_DIR="$PWD/dist/runtime"
+          export RUNTIME_LICENSE_DIR="$PWD/dist/verified/third_party/runtime"
           for flavor in linux-x86_64 hiveos mmpos; do
-            scripts/package-linux.sh build-release/supryolo "$PWD/dist" "$flavor"
+            scripts/package-linux.sh dist/verified/supryolo "$PWD/dist" "$flavor"
           done
       - name: Retrieve tested Windows CI package
         env:
