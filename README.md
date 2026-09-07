@@ -2,8 +2,8 @@
 
 A modular, source-available BTCB2 BLAKE2b miner by **ocminer**.
 
-**Version 0.1.0.** NVIDIA CUDA, AMD OpenCL, runtime-dispatched AVX2 CPU mining,
-BTCB2 Stratum, GPU monitoring/control and a Matrix-style terminal dashboard
+**Version 0.2.0.** NVIDIA CUDA, AMD OpenCL, runtime-dispatched AVX2 CPU mining,
+BTCB2 Stratum V1 and encrypted Stratum V2, GPU monitoring/control and a Matrix-style terminal dashboard
 are implemented. GPU and CPU shares have been accepted by B2Pool and checked
 independently. See [binary downloads, HiveOS, mmpOS, Docker and Windows setup](docs/RELEASES.md)
 for packages, requirements and platform validation limits.
@@ -11,7 +11,7 @@ for packages, requirements and platform validation limits.
 The same binary runs on NVIDIA and AMD rigs. OpenCL hashing and live shares
 have been validated on RX 7600 XT, RX 7900 XTX and Vega 20 hardware.
 Direct-node RPC solo mining and FPGA backends are planned.
-Pool solo ports already use the same Stratum client.
+SV1 pool solo ports use the same Stratum client; B2Pool SV2 solo is not open.
 
 ![Matrix terminal demo; all displayed mining values are simulated](docs/assets/tui-demo.png)
 
@@ -29,9 +29,66 @@ See [installation instructions](docs/RELEASES.md) for HiveOS flight sheets,
 mmpOS profiles, Docker commands and the Windows package. Linux binaries need
 glibc 2.35+; Windows currently uses OpenCL, not CUDA.
 
+## Stratum V2 (encrypted mining)
+
+Version 0.2.0 adds BTCB2 Standard Channels with mandatory pool authentication.
+Use **`stratum2+tcp://`**, including the `2`, and the pool's authority key.
+The key below belongs to B2Pool; for another pool, obtain its own key.
+
+| B2Pool endpoint | Devices | Minimum difficulty |
+|---|---|---:|
+| `de.b2pool.io:13333` | ASIC | 1024 |
+| `de.b2pool.io:14444` | GPU / FPGA | 128 |
+| `de.b2pool.io:15555` | CPU | 1 |
+
+These SV2 ports currently run on **de** only. SV2 solo, Extended Channels and
+Job Declaration are not supported by this miner release. SV1 remains available.
+A password is not sent by the SV2 Standard Channel protocol; use your payout
+address and worker name as the identity.
+
+**All GPUs, no CPU:** replace `YOUR_BTCB2_ADDRESS` with your address.
+
+```sh
+./supryolo --url stratum2+tcp://de.b2pool.io:14444 \
+  --sv2-authority cc22ab3495b26c1a5d0a5c834df4ae8926cc7dbf8ef6c292f951f174280cd323 \
+  --user YOUR_BTCB2_ADDRESS.rig1 --no-cpu
+```
+
+**Only GPU 0 and GPU 2:** add `--gpu-device 0,2` to that command. Every omitted
+GPU stays unused. GPU clocks, power limits, temperature alarms, TUI and API use
+the same options as SV1; for example add `--powerlimit 250 --gpu-temp-alarm 85`.
+Only set power/clock values supported by your hardware.
+
+**CPU only, eight threads:**
+
+```sh
+./supryolo --url stratum2+tcp://de.b2pool.io:15555 \
+  --sv2-authority cc22ab3495b26c1a5d0a5c834df4ae8926cc7dbf8ef6c292f951f174280cd323 \
+  --user YOUR_BTCB2_ADDRESS.cpu1 --no-gpu --cpu-threads 8
+```
+
+**Simplest Linux start:** edit `WALLET` in `start.sh`, then run:
+
+```sh
+PROTOCOL=sv2 ./start.sh --gpu-device 0,2
+PROTOCOL=sv2 MODE=cpu ./start.sh --cpu-threads 8
+```
+
+**HiveOS:** put `stratum2+tcp://de.b2pool.io:14444` in Pool URL and
+`--sv2-authority cc22ab3495b26c1a5d0a5c834df4ae8926cc7dbf8ef6c292f951f174280cd323` in Extra config arguments.
+The existing Wallet and worker template stays the same. **mmpOS:** use the full
+SV2 URL as the pool and pass the same authority option in extra arguments.
+
+**Docker:** use the same arguments after `ocminersupr/supryolo:0.2.0` in the
+Docker examples below. **Windows:** replace `./supryolo` with `supryolo.exe` and
+put each command on one line (the shell continuation `\` is for Linux).
+
+An authentication error is a reason to check the key and endpoint; the miner
+never silently downgrades to an unencrypted connection.
+
 ## Build
 
-Requirements: Linux, CMake 3.24+, a C++20 compiler, OpenSSL development files,
+Requirements: Linux, CMake 3.24+, a C++20 compiler, Rust/Cargo, OpenSSL development files,
 a CUDA toolkit for NVIDIA builds, and OpenCL headers for OpenCL builds. Python 3 runs integration tests.
 OpenCL headers (`CL/cl.h` and `CL/cl_ext.h`) are needed when `YOLO_OPENCL=ON`
 (the default). OpenCL is loaded dynamically; its kernels are embedded in the
@@ -45,6 +102,9 @@ ctest --test-dir build --output-on-failure
 ./build/yolo_tests 0
 python3 tests/stratum_mock.py ./build/supryolo
 ```
+
+SV2 is enabled by default and uses a locked Rust dependency. The release builder
+pins Rust 1.97.1. Use `-DYOLO_SV2=OFF` only if you need an SV1-only build without Rust.
 
 CPU-only build, without a CUDA toolkit:
 
@@ -111,7 +171,7 @@ Pool-solo still connects to a pool. Direct-node RPC solo is not implemented.
 change them to TLS URLs. Other endpoints can use `stratum+tls://` or
 `stratum+ssl://` when they support TLS; certificate verification is enabled.
 
-User agent: `supryolo/0.1.0`.
+User agent: `supryolo/0.2.0`.
 
 ## Performance
 
@@ -134,7 +194,7 @@ run, which was stopped early; cooling needs attention for sustained operation. A
 3581.0 (Navi 31) and 3649.0 (Navi 33/Vega 20) were used.
 CPU thread scaling depends on other workloads and cooling. The RTX 5090 live rate
 was measured on one card; it is not an isolated dual-GPU result. CUDA 13.3,
-architecture 120 was used for the initial measurements. The v0.1.0 release
+architecture 120 was used for the initial measurements. The v0.2.0 release
 uses CUDA 12.8.1; its local RTX 5090 sample measured 17.35 GH/s over 10 seconds. See [validation and live acceptance](docs/VALIDATION.md).
 
 ```sh

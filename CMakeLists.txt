@@ -1,14 +1,15 @@
 cmake_minimum_required(VERSION 3.24)
-project(supryolo VERSION 0.1.0 LANGUAGES CXX)
+project(supryolo VERSION 0.2.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 option(YOLO_CUDA "Build the NVIDIA CUDA backend" ON)
 option(YOLO_OPENCL "Build the OpenCL GPU backend" ON)
+option(YOLO_SV2 "Build authenticated SV2 mining (requires Cargo)" ON)
 find_package(OpenSSL REQUIRED)
 find_package(Threads REQUIRED)
 add_library(yolo_core src/crypto.cpp src/coin.cpp src/cpu.cpp src/cpu_avx2.cpp)
 target_include_directories(yolo_core PUBLIC include third_party)
 target_link_libraries(yolo_core PUBLIC OpenSSL::Crypto Threads::Threads)
-add_library(yolo_protocol src/stratum.cpp)
+add_library(yolo_protocol src/stratum.cpp src/sv2.cpp)
 target_link_libraries(yolo_protocol PUBLIC yolo_core)
 if(YOLO_CUDA)
   if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
@@ -92,4 +93,56 @@ if(Python3_FOUND)
 endif()
 if(Python3_FOUND AND NOT WIN32)
   add_test(NAME packaging_scripts COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/packaging.py)
+endif()
+
+add_executable(sv2_tests tests/sv2.cpp)
+target_link_libraries(sv2_tests PRIVATE yolo_protocol)
+add_test(NAME sv2_protocol COMMAND sv2_tests)
+if(YOLO_SV2)
+  find_program(CARGO_EXECUTABLE cargo REQUIRED)
+  set(SV2_RUST_TARGET "${CMAKE_CURRENT_BINARY_DIR}/rust-target")
+  set(SV2_NOISE_LIBRARY "${SV2_RUST_TARGET}/release/${CMAKE_STATIC_LIBRARY_PREFIX}supryolo_sv2_noise${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  add_custom_command(OUTPUT "${SV2_NOISE_LIBRARY}"
+    COMMAND ${CMAKE_COMMAND} -E env --unset=MAKEFLAGS --unset=MFLAGS "CARGO_TARGET_DIR=${SV2_RUST_TARGET}"
+      ${CARGO_EXECUTABLE} build --lib --locked --release --manifest-path "${CMAKE_CURRENT_SOURCE_DIR}/rust/sv2-noise/Cargo.toml"
+    DEPENDS rust/sv2-noise/Cargo.toml rust/sv2-noise/Cargo.lock rust/sv2-noise/src/lib.rs
+    VERBATIM)
+  add_custom_target(sv2_rust_build DEPENDS "${SV2_NOISE_LIBRARY}")
+  add_library(sv2_rust STATIC IMPORTED)
+  set_target_properties(sv2_rust PROPERTIES IMPORTED_LOCATION "${SV2_NOISE_LIBRARY}")
+  add_dependencies(sv2_rust sv2_rust_build)
+  add_library(yolo_sv2_noise src/sv2_noise.cpp src/sv2_session.cpp)
+  target_link_libraries(yolo_network PUBLIC yolo_sv2_noise)
+  target_compile_definitions(yolo_network PUBLIC YOLO_SV2=1)
+  target_link_libraries(yolo_sv2_noise PUBLIC yolo_protocol sv2_rust ${CMAKE_DL_LIBS})
+  if(WIN32)
+    target_link_libraries(yolo_sv2_noise PUBLIC ws2_32 bcrypt userenv ntdll)
+  endif()
+  add_test(NAME sv2_noise_crypto COMMAND ${CMAKE_COMMAND} -E env --unset=MAKEFLAGS --unset=MFLAGS "CARGO_TARGET_DIR=${SV2_RUST_TARGET}"
+    ${CARGO_EXECUTABLE} test --locked --manifest-path "${CMAKE_CURRENT_SOURCE_DIR}/rust/sv2-noise/Cargo.toml")
+endif()
+
+if(YOLO_SV2 AND Python3_FOUND AND NOT WIN32)
+  add_executable(sv2_transport_tests tests/sv2_transport.cpp)
+  target_link_libraries(sv2_transport_tests PRIVATE yolo_sv2_noise)
+  set(SV2_TEST_PEER "${SV2_RUST_TARGET}/release/sv2-test-peer")
+  add_custom_command(OUTPUT "${SV2_TEST_PEER}"
+    COMMAND ${CMAKE_COMMAND} -E env --unset=MAKEFLAGS --unset=MFLAGS "CARGO_TARGET_DIR=${SV2_RUST_TARGET}"
+      ${CARGO_EXECUTABLE} build --locked --release --bin sv2-test-peer
+      --manifest-path "${CMAKE_CURRENT_SOURCE_DIR}/rust/sv2-noise/Cargo.toml"
+    DEPENDS rust/sv2-noise/src/bin/sv2-test-peer.rs rust/sv2-noise/Cargo.toml rust/sv2-noise/Cargo.lock
+    VERBATIM)
+  add_custom_target(sv2_test_peer_build DEPENDS "${SV2_TEST_PEER}")
+  add_dependencies(sv2_test_peer_build sv2_rust_build)
+  add_dependencies(sv2_transport_tests sv2_test_peer_build)
+  add_test(NAME sv2_transport COMMAND ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/sv2_transport.py" $<TARGET_FILE:sv2_transport_tests> "${SV2_TEST_PEER}")
+endif()
+
+if(YOLO_SV2 AND Python3_FOUND AND NOT WIN32)
+  add_executable(sv2_session_tests tests/sv2_session.cpp)
+  target_link_libraries(sv2_session_tests PRIVATE yolo_sv2_noise)
+  add_dependencies(sv2_session_tests sv2_test_peer_build)
+  add_test(NAME sv2_session COMMAND ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/sv2_transport.py" $<TARGET_FILE:sv2_session_tests> "${SV2_TEST_PEER}" --session)
 endif()

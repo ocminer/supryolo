@@ -45,7 +45,7 @@ std::vector<unsigned> numbers(const std::string &text, unsigned maximum) {
 }
 void usage() {
   std::cout
-      << "supryolo/0.1.0\n"
+      << "supryolo/0.2.0\n"
          "Mine: --url stratum+tcp://de.b2pool.io:4444 --user ADDRESS.worker\n"
          "Devices: --gpu-device 0,1 (alias -d; default all), --no-gpu, --no-cpu\n"
          "GPU backend: --gpu-backend auto|cuda|opencl (auto: CUDA plus AMD OpenCL)\n"
@@ -55,6 +55,7 @@ void usage() {
          "              --gpu-fan-speed PERCENT (one value or comma-separated per selected GPU)\n"
          "              0 resets that setting; explicit settings persist until changed\n"
          "Display: --tui --no-tui --gpu-temp-warn 75 --gpu-temp-alarm 85\n"
+         "SV2: --url stratum2+tcp://HOST:PORT --sv2-authority HEX_KEY\n"
          "API: --api-port N (loopback HTTP, 0 disables); --log-file PATH\n"
          "Inspect: --list-devices --tui-demo [--seconds 10]\n"
          "Benchmark: --benchmark --no-cpu --gpu-device 0 --seconds 30\n"
@@ -120,7 +121,9 @@ int main(int argc, char **argv) {
         if (used != s.size() || !std::isfinite(o.seconds) || o.seconds <= 0)
           throw std::runtime_error("seconds must be positive and finite");
         seconds_set = true;
-      } else if (a == "--url")
+      } else if (a == "--sv2-authority")
+        o.sv2_authority = value();
+      else if (a == "--url")
         o.url = value();
       else if (a == "--user")
         o.user = value();
@@ -151,7 +154,7 @@ int main(int argc, char **argv) {
       else if (a == "--tui-demo")
         demo = true;
       else if (a == "--version") {
-        std::cout << "supryolo/0.1.0\n";
+        std::cout << "supryolo/0.2.0\n";
         return 0;
       } else if (a == "--help" || a == "-h")
         help = true;

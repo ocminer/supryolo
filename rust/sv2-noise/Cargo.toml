@@ -1,0 +1,15 @@
+[package]
+name = "supryolo-sv2-noise"
+version = "0.2.0"
+edition = "2021"
+license = "LicenseRef-Supryolo-NC-1.0"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+noise_sv2 = { git = "https://github.com/stratum-mining/stratum", rev = "d3a05cfa8b51c6923df81f42bdac7f76b2147830" }
+
+[profile.release]
+opt-level = 3

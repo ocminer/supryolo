@@ -4,7 +4,7 @@ set -euo pipefail
 BIN="${1:?binary required}"
 OUT="${2:?output directory required}"
 FLAVOR="${3:-linux-x86_64}"
-VERSION=0.1.0
+VERSION=0.2.0
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 STAGE="$(mktemp -d)"
@@ -15,6 +15,7 @@ strip "$STAGE/supryolo/supryolo"
 cp start.sh LICENSE THIRD_PARTY.md README.md "$STAGE/supryolo/"
 cp third_party/nlohmann/LICENSE.MIT "$STAGE/supryolo/third_party/nlohmann/"
 cp -r docs "$STAGE/supryolo/"
+cp -r third_party/sri third_party/rust-dependencies third_party/rust-runtime "$STAGE/supryolo/third_party/"
 if [[ -n "${RUNTIME_LICENSE_DIR:-}" ]]; then
   cp -r "$RUNTIME_LICENSE_DIR" "$STAGE/supryolo/third_party/runtime"
 else

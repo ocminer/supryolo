@@ -147,3 +147,23 @@ not implement BLAKE2b hardware. Board model, FPGA part, available bitstreams,
 clocks and interface documentation are needed before that phase. A Sia FPGA
 reference worth evaluating is [SiaFpgaMiner](https://github.com/pedrorivera/SiaFpgaMiner);
 its resource/timing results cannot be assumed to apply to a different board.
+
+## Stratum V2
+
+`sv2.cpp` implements bounded message decoding and BTCB2 commitment-to-work
+conversion. `sv2_noise.cpp` wraps the pinned SRI Noise implementation through a
+Rust C ABI. `sv2_session.cpp` owns Standard Channel jobs, validity epochs,
+target snapshots and batched acknowledgements. The common mining scheduler
+allocates consecutive, non-overlapping ranges across all selected devices.
+Pool authentication is mandatory; there is no plaintext fallback.
+
+Transport tests use a separate SRI responder over pipes and cover fragmentation,
+AEAD chunk boundaries and tampering. Session tests cover future jobs, target
+snapshots and delayed rejection inside an acknowledgement batch. Public test
+keys belong only to fixtures, which are excluded from binary packages.
+
+Extended Channels, Job Declaration and template distribution are not enabled.
+The BTCB2 work format and time rolling policy must not be reused for SHA256d
+Bitcoin without a separate coin profile. Network block confirmations are not
+available through the SV2 share acknowledgement; accepted shares are not a
+confirmed block counter.

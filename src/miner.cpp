@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-Supryolo-NC-1.0
 #include "yolo/net.hpp"
+#ifdef YOLO_SV2
+#include "yolo/sv2_session.hpp"
+#endif
 #include "yolo/api.hpp"
 #include "yolo/hardware.hpp"
 #include "yolo/stratum.hpp"
@@ -81,12 +84,13 @@ public:
           net::Poll p{fd, POLLOUT, 0};
           if (net::poll(&p, 1, 5000) > 0) {
             int error = 0;
-            #ifdef _WIN32
+#ifdef _WIN32
             int n = sizeof(error);
 #else
             socklen_t n = sizeof(error);
 #endif
-            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, reinterpret_cast<char *>(&error), &n) == 0 && error == 0)
+            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, reinterpret_cast<char *>(&error), &n) == 0 &&
+                error == 0)
               break;
           }
         }
@@ -126,10 +130,14 @@ public:
   ~Socket() { close(); }
   void send(const json &j) {
     auto s = j.dump() + "\n";
+    send_bytes(std::span(reinterpret_cast<const uint8_t *>(s.data()), s.size()));
+  }
+  void send_bytes(std::span<const uint8_t> s) {
     size_t off = 0;
     while (off < s.size()) {
       int n = ssl ? SSL_write(ssl, s.data() + off, int(s.size() - off))
-                  : ::send(fd, s.data() + off, static_cast<int>(s.size() - off), net::send_flags);
+                  : ::send(fd, reinterpret_cast<const char *>(s.data()) + off,
+                           static_cast<int>(s.size() - off), net::send_flags);
       if (n > 0) {
         off += n;
         continue;
@@ -151,6 +159,17 @@ public:
         continue;
       throw std::runtime_error("pool send failed");
     }
+  }
+  Bytes read_bytes() {
+    Bytes b(8192);
+    int n = ::recv(fd, reinterpret_cast<char *>(b.data()), int(b.size()), 0);
+    if (n > 0) {
+      b.resize(n);
+      return b;
+    }
+    if (n < 0 && (net::again() || net::interrupted()))
+      return {};
+    throw std::runtime_error("SV2 pool disconnected");
   }
   std::vector<json> read() {
     std::vector<json> out;
@@ -231,6 +250,21 @@ std::string reject_reason(const json &message) {
 }
 } // namespace
 int mine(const MineOptions &o) {
+  const bool use_sv2 = o.url.starts_with("stratum2+tcp://");
+  std::string transport_url = o.url;
+#ifdef YOLO_SV2
+  Hash authority{};
+  if (use_sv2) {
+    auto key = unhex(o.sv2_authority);
+    if (key.size() != 32)
+      throw std::runtime_error("SV2 requires --sv2-authority with 32-byte hex key");
+    std::copy(key.begin(), key.end(), authority.begin());
+    transport_url.replace(0, transport_url.find("://") + 3, "stratum+tcp://");
+  }
+#else
+  if (use_sv2)
+    throw std::runtime_error("SV2 was disabled at build time");
+#endif
   if (o.user.empty())
     throw std::runtime_error("payout worker required with --user");
   if (o.no_cpu && o.no_gpu)
@@ -262,7 +296,7 @@ int mine(const MineOptions &o) {
                            ? CPU_COUNT(&mask)
                            : std::max(1u, std::thread::hardware_concurrency());
 #else
-    unsigned logical = std::max(1u,std::thread::hardware_concurrency());
+    unsigned logical = std::max(1u, std::thread::hardware_concurrency());
 #endif
     cpu_threads = std::max(1, int(logical / 2) - int(selected.size()) - 1);
   }
@@ -389,20 +423,37 @@ int mine(const MineOptions &o) {
     try {
       view.state = "CONNECTING";
       ui.update(view);
-      Socket socket(o.url);
+      Socket socket(transport_url);
       StratumState state;
-      socket.send({{"id", 1},
-                   {"method", "mining.subscribe"},
-                   {"params", json::array({"supryolo/0.1.0"})}});
-      socket.send(
-          {{"id", 2}, {"method", "mining.extranonce.subscribe"}, {"params", json::array()}});
-      socket.send({{"id", 3},
-                   {"method", "mining.authorize"},
-                   {"params", json::array({o.user, o.password})}});
+#ifdef YOLO_SV2
+      std::unique_ptr<sv2::Session> v2;
+      if (use_sv2) {
+        auto address = transport_url.substr(transport_url.find("://") + 3);
+        auto colon = address.rfind(':');
+        auto host = address.substr(0, colon);
+        auto port = std::stoul(address.substr(colon + 1));
+        if (port == 0 || port > 65535)
+          throw std::runtime_error("invalid SV2 port");
+        v2 = std::make_unique<sv2::Session>(authority, host, uint16_t(port), o.user,
+                                            float(selected.size() * 17e9 + cpu_threads * 25e6),
+                                            [&](const Bytes &b) { socket.send_bytes(b); });
+      } else
+#endif
+      {
+        socket.send({{"id", 1},
+                     {"method", "mining.subscribe"},
+                     {"params", json::array({"supryolo/0.2.0"})}});
+        socket.send(
+            {{"id", 2}, {"method", "mining.extranonce.subscribe"}, {"params", json::array()}});
+        socket.send({{"id", 3},
+                     {"method", "mining.authorize"},
+                     {"params", json::array({o.user, o.password})}});
+      }
       std::mutex mutex;
       std::optional<Job> work;
       std::deque<Found> found;
       std::string failure;
+      uint64_t shared_cursor = 0, shared_generation = 0;
       std::vector<std::jthread> workers;
       struct Stop {
         std::vector<std::jthread> &workers;
@@ -425,9 +476,21 @@ int mine(const MineOptions &o) {
             uint64_t generation = 0, cursor = 0;
             while (!token.stop_requested()) {
               std::optional<Job> j;
+              uint64_t reserved_cursor = 0;
               {
                 std::lock_guard lock(mutex);
                 j = work;
+#ifdef YOLO_SV2
+                if (j && j->sv2) {
+                  if (shared_generation != j->generation) {
+                    shared_generation = j->generation;
+                    shared_cursor = 0;
+                  }
+                  reserved_cursor = shared_cursor;
+                  auto reserved = sv2::partition(j->time32, 0, shared_cursor, batch);
+                  shared_cursor += reserved.count;
+                }
+#endif
               }
               if (!j) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -437,11 +500,28 @@ int mine(const MineOptions &o) {
                 generation = j->generation;
                 cursor = 0;
               }
-              constexpr uint64_t space = uint64_t{1} << 56;
-              if (cursor > space - batch)
-                throw std::runtime_error("nonce partition exhausted");
+#ifdef YOLO_SV2
+              uint64_t start;
+              uint32_t count = batch;
+              if (j->sv2) {
+                auto p = sv2::partition(j->time32, 0, reserved_cursor, batch);
+                start = p.nonce;
+                count = p.count;
+                j->time32 = p.ntime;
+                store_le(j->work.header.data() + 40, p.ntime);
+              } else {
+#endif
+                constexpr uint64_t space = uint64_t{1} << 56;
+                if (cursor > space - batch)
+                  throw std::runtime_error("nonce partition exhausted");
+#ifdef YOLO_SV2
+                start = (uint64_t(index) << 56) | cursor;
+              }
+              auto r = backend->scan(j->work, start, count);
+#else
               uint64_t start = (uint64_t(index) << 56) | cursor;
               auto r = backend->scan(j->work, start, batch);
+#endif
               cursor += r.hashes;
               slot.hashes += r.hashes;
               {
@@ -462,10 +542,31 @@ int mine(const MineOptions &o) {
       auto received = Clock::now();
       bool activated = false;
       ui.event("Connected to " + o.url);
-      while (!expired()) {
-        for (auto &message : socket.read()) {
+      bool draining = false;
+      auto drain_until = Clock::now();
+      while (!expired() || (!draining && !pending.empty()) ||
+             (draining && !pending.empty() && Clock::now() < drain_until)) {
+        if (expired() && !draining) {
+          draining = true;
+          drain_until = Clock::now() + std::chrono::seconds(5);
+          for (auto &w : workers)
+            w.request_stop();
+        }
+
+#ifdef YOLO_SV2
+        auto messages = v2 ? v2->receive(socket.read_bytes()) : socket.read();
+#else
+        auto messages = socket.read();
+#endif
+        for (auto &message : messages) {
           received = Clock::now();
+#ifdef YOLO_SV2
+          auto job = v2 ? v2->current : state.receive(message);
+          bool authorized = v2 ? bool(v2->current) : state.authorized;
+#else
           auto job = state.receive(message);
+          bool authorized = state.authorized;
+#endif
           if (message.contains("method")) {
             auto method = message["method"].get<std::string>();
             if (method == "mining.set_difficulty") {
@@ -511,9 +612,13 @@ int mine(const MineOptions &o) {
               pending.erase(found_pending);
             }
           }
-          if (state.authorized && (job || !activated)) {
+          if (!draining && authorized && (job || !activated)) {
             std::lock_guard lock(mutex);
+#ifdef YOLO_SV2
+            work = v2 ? v2->current : state.current;
+#else
             work = state.current;
+#endif
             activated = bool(work);
             if (activated) {
               backoff = 1;
@@ -532,7 +637,13 @@ int mine(const MineOptions &o) {
           queue.swap(found);
         }
         for (const auto &f : queue) {
+          if (draining)
+            continue;
+#ifdef YOLO_SV2
+          if (!(v2 ? v2->valid(f.job) : state.valid(f.job)))
+#else
           if (!state.valid(f.job))
+#endif
             continue;
           if (pending.size() >= 4096)
             throw std::runtime_error("too many outstanding shares");
@@ -551,10 +662,17 @@ int mine(const MineOptions &o) {
                          ") - awaiting pool confirmation",
                      Severity::success);
           }
-          socket.send(
-              {{"id", nextid},
-               {"method", "mining.submit"},
-               {"params", json::array({o.user, f.job.id, f.job.en2, f.job.ntime, hex(nonce)})}});
+#ifdef YOLO_SV2
+          if (v2) {
+            if (nextid > UINT32_MAX)
+              throw std::runtime_error("SV2 sequence exhausted; reconnecting");
+            v2->submit(f.job, f.nonce, uint32_t(nextid));
+          } else
+#endif
+            socket.send(
+                {{"id", nextid},
+                 {"method", "mining.submit"},
+                 {"params", json::array({o.user, f.job.id, f.job.en2, f.job.ntime, hex(nonce)})}});
           pending.emplace(nextid++, Pending{Clock::now(), f.row});
         }
         auto now = Clock::now();

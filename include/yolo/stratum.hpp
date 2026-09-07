@@ -11,6 +11,8 @@ struct Job {
   std::string id, en2, ntime;
   uint64_t generation{}, epoch{};
   Hash network_target{};
+  bool sv2 = false;
+  uint32_t channel{}, wire_job{}, version{}, time32{};
 };
 // Pure session state: socket I/O and devices are deliberately outside this module.
 class StratumState {
@@ -28,7 +30,9 @@ public:
   bool valid(const Job &job) const;
 };
 struct MineOptions {
-  std::string log_file, url, user, password = "x", tui = "auto", cpu_variant = "auto", gpu_mode = "auto";
+  std::string sv2_authority;
+  std::string log_file, url, user, password = "x", tui = "auto", cpu_variant = "auto",
+                                   gpu_mode = "auto";
   std::vector<int> devices;
   bool devices_explicit = false, no_cpu = false, no_gpu = false;
   unsigned cpu_threads = 0, api_port = 0;

@@ -1,17 +1,17 @@
 # Download and run
 
 Use the assets on the [GitHub release page](https://github.com/ocminer/supryolo/releases).
-Version 0.1.0 is the first binary release. User agent: `supryolo/0.1.0`.
+Version 0.2.0 adds authenticated BTCB2 Stratum V2 Standard Channels. User agent: `supryolo/0.2.0`.
 
 ## Which file?
 
 | Asset | Use |
 |---|---|
-| `supryolo-0.1.0-linux-x86_64.tar.gz` | Linux: combined NVIDIA CUDA, AMD OpenCL and CPU |
-| `supryolo-0.1.0.hiveos.tar.gz` | HiveOS Custom miner, with callbacks and API adapter |
-| `supryolo-0.1.0-mmpos.tar.gz` | mmpOS Custom miner, with launcher and stats adapter |
-| `supryolo-0.1.0-windows-x86_64.zip` | Windows: OpenCL GPU and AVX2/scalar CPU; built by GitHub Actions |
-| `supryolo-0.1.0-docker.tar.gz` | Offline Docker image; import with `gzip -dc FILE | docker load` |
+| `supryolo-0.2.0-linux-x86_64.tar.gz` | Linux: combined NVIDIA CUDA, AMD OpenCL and CPU |
+| `supryolo-0.2.0.hiveos.tar.gz` | HiveOS Custom miner, with callbacks and API adapter |
+| `supryolo-0.2.0-mmpos.tar.gz` | mmpOS Custom miner, with launcher and stats adapter |
+| `supryolo-0.2.0-windows-x86_64.zip` | Windows: OpenCL GPU and AVX2/scalar CPU; built by GitHub Actions |
+| `supryolo-0.2.0-docker.tar.gz` | Offline Docker image; import with `gzip -dc FILE | docker load` |
 | `SHA256SUMS` | SHA-256 checksums for release assets |
 
 Linux binaries require **x86-64 and glibc 2.35 or newer** (Ubuntu 22.04/24.04).
@@ -26,7 +26,7 @@ A kernel driver alone is insufficient; `--list-devices` must show your card.
 ## Linux: change your address and start
 
 ```sh
-tar -xzf supryolo-0.1.0-linux-x86_64.tar.gz
+tar -xzf supryolo-0.2.0-linux-x86_64.tar.gz
 cd supryolo
 nano start.sh
 ./start.sh
@@ -54,7 +54,7 @@ Create a flight sheet with your BTCB2 wallet and choose **Custom** miner:
 | Field | Value |
 |---|---|
 | Miner name | `supryolo` |
-| Installation URL | `https://github.com/ocminer/supryolo/releases/download/v0.1.0/supryolo-0.1.0.hiveos.tar.gz` |
+| Installation URL | `https://github.com/ocminer/supryolo/releases/download/v0.2.0/supryolo-0.2.0.hiveos.tar.gz` |
 | Wallet and worker template | `%WAL%.%WORKER_NAME%` |
 | Pool URL | `stratum+tcp://de.b2pool.io:4444` |
 | Pass | `x` |
@@ -83,7 +83,7 @@ validated; report integration issues with your OS/agent version.
 Create a **Custom miner** profile. Download URL:
 
 ```text
-https://github.com/ocminer/supryolo/releases/download/v0.1.0/supryolo-0.1.0-mmpos.tar.gz
+https://github.com/ocminer/supryolo/releases/download/v0.2.0/supryolo-0.2.0-mmpos.tar.gz
 ```
 
 Select your BTCB2 wallet and B2Pool GPU port 4444. In advanced arguments use:
@@ -104,19 +104,19 @@ mmpOS-agent deployment has not yet been validated.
 
 ## Docker
 
-Image: `ocminersupr/supryolo:0.1.0`. The versioned tag is recommended for rigs.
+Image: `ocminersupr/supryolo:0.2.0`. The versioned tag is recommended for rigs.
 The default command prints help; it never mines to a built-in wallet.
 For NVIDIA, install NVIDIA Container Toolkit on the host first.
 
 ```sh
-docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all ocminersupr/supryolo:0.1.0 \
+docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all ocminersupr/supryolo:0.2.0 \
   --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.rig1 --no-cpu
 ```
 
 Expose just host GPU 0 to the container:
 
 ```sh
-docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 ocminersupr/supryolo:0.1.0 \
+docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 ocminersupr/supryolo:0.2.0 \
   --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.rig1 \
   --no-cpu --gpu-device 0
 ```
@@ -127,7 +127,7 @@ To use the simple starter script instead:
 
 ```sh
 docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all -e WALLET=YOUR_BTCB2_ADDRESS \
-  --entrypoint ./start.sh ocminersupr/supryolo:0.1.0
+  --entrypoint ./start.sh ocminersupr/supryolo:0.2.0
 ```
 
 This image supplies NVIDIA/CPU runtime dependencies. AMD rigs should use the
@@ -173,11 +173,18 @@ H/s, PCI address, temperature and fan. Unknown sensors are JSON null. The API
 excludes wallet credentials and has no configuration or control endpoints.
 A displayed block candidate is not a confirmed network block.
 
+## SV2 setup
+
+See the [SV2 command examples](../README.md#stratum-v2-encrypted-mining).
+Use `de.b2pool.io:14444` for GPUs and `de.b2pool.io:15555` for CPUs, with
+`stratum2+tcp://` and `--sv2-authority`. Linux, Windows, HiveOS, mmpOS and Docker
+packages support the same protocol. B2Pool SV2 solo is not open.
+
 ## Building release packages
 
 Build in the pinned CUDA 12.8 / Ubuntu 22.04 builder from
 `packaging/linux/Dockerfile.build`, with Release optimization, static OpenSSL
-and GCC runtimes, and `CMAKE_CUDA_ARCHITECTURES=75;80;86;89;90;120`.
+and GCC runtimes, Rust 1.97.1, and `CMAKE_CUDA_ARCHITECTURES=75;80;86;89;90;120`.
 Run CTest and device hash-oracle checks on the final binary. Use
 `scripts/package-linux.sh` for native, HiveOS and mmpOS archives; include runtime
 license notices. Use the clean extracted package as Docker build context.

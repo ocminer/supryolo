@@ -19,3 +19,8 @@ Linux executables statically link OpenSSL (Apache-2.0) and GCC runtime libraries
 NVIDIA's toolkit license. Windows packages carry the required MinGW runtime and
 OpenSSL DLLs with their original notices. These components are excluded from the
 first-party noncommercial restrictions.
+
+SV2 uses the pinned SRI `noise_sv2` library (MIT OR Apache-2.0). Original
+notices are in `third_party/sri`; locked transitive dependency notices and
+metadata are in `third_party/rust-dependencies`. Rust runtime notices are
+in `third_party/rust-runtime`. These libraries retain their original terms.

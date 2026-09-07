@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['src/**', 'include/**', 'tests/**', 'CMakeLists.txt', 'packaging/**', '.github/workflows/windows.yml']
+    paths: ['rust/**', 'src/**', 'include/**', 'tests/**', 'CMakeLists.txt', 'packaging/**', '.github/workflows/windows.yml']
 permissions:
   contents: read
 jobs:
@@ -21,10 +21,12 @@ jobs:
           install: >-
             mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-rust
             mingw-w64-ucrt-x86_64-opencl-headers mingw-w64-ucrt-x86_64-python
             zip
       - name: Build native OpenCL and AVX2 executable
         run: |
+          export PATH="/ucrt64/bin:$PATH"
           cmake -S . -B build-windows -G Ninja -DCMAKE_BUILD_TYPE=Release -DYOLO_CUDA=OFF -DYOLO_OPENCL=ON -DCMAKE_CXX_FLAGS="-ffile-prefix-map=$PWD=."
           cmake --build build-windows --parallel 4
           ctest --test-dir build-windows --output-on-failure
@@ -38,6 +40,7 @@ jobs:
           cp packaging/windows/start.cmd LICENSE THIRD_PARTY.md README.md dist/supryolo/
           cp third_party/nlohmann/LICENSE.MIT dist/supryolo/third_party/nlohmann/
           cp -r docs dist/supryolo/
+          cp -r third_party/sri third_party/rust-dependencies third_party/rust-runtime dist/supryolo/third_party/
           mkdir -p dist/supryolo/third_party/runtime
           for package in gcc gcc-libs openssl ca-certificates p11-kit libffi libwinpthread; do
             if [ -d "/ucrt64/share/licenses/$package" ]; then
@@ -48,8 +51,8 @@ jobs:
           # GCC Runtime Library Exception permits these linked runtime distributions.
           strip dist/supryolo/supryolo.exe
           cd dist
-          zip -qr supryolo-0.1.0-windows-x86_64.zip supryolo
-          sha256sum supryolo-0.1.0-windows-x86_64.zip > WINDOWS-SHA256SUMS
+          zip -qr supryolo-0.2.0-windows-x86_64.zip supryolo
+          sha256sum supryolo-0.2.0-windows-x86_64.zip > WINDOWS-SHA256SUMS
       - name: Verify packaged EXE without the build toolchain on PATH
         shell: pwsh
         run: |
@@ -62,6 +65,6 @@ jobs:
         with:
           name: supryolo-windows
           path: |
-            dist/supryolo-0.1.0-windows-x86_64.zip
+            dist/supryolo-0.2.0-windows-x86_64.zip
             dist/WINDOWS-SHA256SUMS
           if-no-files-found: error
