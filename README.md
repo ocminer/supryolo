@@ -175,13 +175,17 @@ User agent: `supryolo/0.2.0`.
 
 ## Performance
 
+RTX 5090 and RX 7900 XTX entries were refreshed with v0.2.0 live SV2 runs
+(180 and 120 seconds respectively). Other entries retain the earlier SV1
+measurements; the hashing kernels are unchanged.
+
 Measured on the supported hardware; these are scanned hashes per elapsed
 second, not estimates from the arrival times of a few shares.
 
 | Device | Configuration | Measured rate | Measurement |
 |---|---|---|---|
-| RTX 5090 32 GB | Release CUDA settings | 17.22 GH/s | Live B2Pool, 90 seconds |
-| RX 7900 XTX 24 GB | Default OpenCL settings | 5.783 GH/s | Live B2Pool, 300 seconds |
+| RTX 5090 32 GB | Release CUDA settings | 17.14 GH/s | Live B2Pool, 90 seconds |
+| RX 7900 XTX 24 GB | Default OpenCL settings | 5.713 GH/s | Live B2Pool, 300 seconds |
 | RX 7600 XT 16 GB | OpenCL, variant 3, group 64 | 2.09 GH/s | Local benchmark, 4 seconds |
 | Instinct MI50/MI60, Vega 20 16 GB | OpenCL, variant 3, group 64 | 2.75 GH/s | Local benchmark, 4 seconds |
 | Ryzen 9 3950X | AVX2, 15 threads | 366.7 MH/s | Local benchmark, 10 seconds |

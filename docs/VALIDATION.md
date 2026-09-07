@@ -151,3 +151,17 @@ HiveOS/mmpOS callbacks are tested against their documented interface formats;
 no complete deployment on those installed operating systems has been observed.
 Windows CI provides native build, CPU protocol and monitoring checks, but no
 physical Windows GPU validation. These limits are stated in the download guide.
+
+## Version 0.2.0
+
+The packaged Linux build passed 12 CTest cases and the CUDA full-hash oracle
+(57,344 hashes). Live SV2 checks on that build accepted 7/7 RTX 5090 shares,
+7/7 AVX2 CPU shares and 4/4 RX 7900 XTX shares, with no rejects, stale shares or
+pending replies at completion. The shared scheduler allocates disjoint ranges
+across threads. Noise authentication, job replacement and batched reply handling
+also have local protocol tests. These are share acceptance results; no network
+block was found during the tests.
+
+Windows uses OpenCL and CPU; physical Windows GPU validation and installed
+HiveOS/mmpOS deployments remain outside these checks. The rig integrations are
+covered by launcher/API fixtures. SV2 uses Standard Channels only.
