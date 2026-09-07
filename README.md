@@ -11,7 +11,7 @@ for packages, requirements and platform validation limits.
 The same binary runs on NVIDIA and AMD rigs. OpenCL hashing and live shares
 have been validated on RX 7600 XT, RX 7900 XTX and Vega 20 hardware.
 Direct-node RPC solo mining and FPGA backends are planned.
-SV1 pool solo ports use the same Stratum client; B2Pool SV2 solo is not open.
+Pool solo mining uses the same Stratum client, with the pool’s solo port.
 
 ![Matrix terminal demo; all displayed mining values are simulated](docs/assets/tui-demo.png)
 
@@ -35,14 +35,20 @@ Version 0.2.0 adds BTCB2 Standard Channels with mandatory pool authentication.
 Use **`stratum2+tcp://`**, including the `2`, and the pool's authority key.
 The key below belongs to B2Pool; for another pool, obtain its own key.
 
-| B2Pool endpoint | Devices | Minimum difficulty |
-|---|---|---:|
-| `de.b2pool.io:13333` | ASIC | 1024 |
-| `de.b2pool.io:14444` | GPU / FPGA | 128 |
-| `de.b2pool.io:15555` | CPU | 1 |
+| Devices | Shared SV2 port | Solo SV2 port | Minimum difficulty |
+|---|---:|---:|---:|
+| ASIC | 13333 | 13334 | 1024 |
+| GPU / FPGA | 14444 | 14445 | 128 |
+| CPU | 15555 | 15556 | 1 |
 
-These SV2 ports currently run on **de** only. SV2 solo, Extended Channels and
-Job Declaration are not supported by this miner release. SV1 remains available.
+The ports run on **`de.b2pool.io`**, **`hel.b2pool.io`** and **`ord.b2pool.io`**,
+with the same authority key. Select the region nearest your rig. For pool solo
+mining, use the solo port: GPU example `stratum2+tcp://hel.b2pool.io:14445`, CPU
+example `stratum2+tcp://de.b2pool.io:15556`. Accepted solo shares are work reports,
+not block rewards; solo rewards require finding a block.
+
+Extended Channels and Job Declaration are not supported by this miner release.
+SV1 remains available.
 A password is not sent by the SV2 Standard Channel protocol; use your payout
 address and worker name as the identity.
 
