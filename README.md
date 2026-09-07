@@ -240,8 +240,8 @@ User agent: `supryolo/0.2.1`.
 
 ## Performance
 
-RTX 5090 and RX 7900 XTX entries were refreshed with v0.2.0 live SV2 runs
-(180 and 120 seconds respectively). Other entries retain the earlier SV1
+RTX 5090 and RX 7900 XTX entries were refreshed with v0.2.1 live DATUM gateway runs
+(150 and 180 seconds respectively). Other entries retain the earlier SV1
 measurements; the hashing kernels are unchanged.
 
 Measured on the supported hardware; these are scanned hashes per elapsed
@@ -249,8 +249,8 @@ second, not estimates from the arrival times of a few shares.
 
 | Device | Configuration | Measured rate | Measurement |
 |---|---|---|---|
-| RTX 5090 32 GB | Release CUDA settings | 17.14 GH/s | Live B2Pool SV2, 180 seconds |
-| RX 7900 XTX 24 GB | Default OpenCL settings | 5.713 GH/s | Live B2Pool SV2, 120 seconds |
+| RTX 5090 32 GB | Release CUDA settings | 17.15 GH/s | Live B2Pool DATUM gateway, 150 seconds |
+| RX 7900 XTX 24 GB | Default OpenCL settings | 5.784 GH/s | Live B2Pool DATUM gateway, 180 seconds |
 | RX 7600 XT 16 GB | OpenCL, variant 3, group 64 | 2.09 GH/s | Local benchmark, 4 seconds |
 | Instinct MI50/MI60, Vega 20 16 GB | OpenCL, variant 3, group 64 | 2.75 GH/s | Local benchmark, 4 seconds |
 | Ryzen 9 3950X | AVX2, 15 threads | 366.7 MH/s | Local benchmark, 10 seconds |
@@ -263,8 +263,8 @@ run, which was stopped early; cooling needs attention for sustained operation. A
 3581.0 (Navi 31) and 3649.0 (Navi 33/Vega 20) were used.
 CPU thread scaling depends on other workloads and cooling. The RTX 5090 live rate
 was measured on one card; it is not an isolated dual-GPU result. CUDA 13.3,
-architecture 120 was used for the initial measurements. The v0.2.0 release
-uses CUDA 12.8.1; its local RTX 5090 sample measured 17.35 GH/s over 10 seconds. See [validation and live acceptance](docs/VALIDATION.md).
+architecture 120 was used for the initial measurements. The v0.2.1 release
+uses CUDA 12.8.1. See [validation and live acceptance](docs/VALIDATION.md).
 
 ```sh
 ./build/supryolo --benchmark --no-cpu --gpu-device 0 --seconds 30

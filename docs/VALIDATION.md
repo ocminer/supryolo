@@ -181,3 +181,34 @@ ORD share is not counted as accepted. All regions passed authenticated
 connections on the six shared/solo ports. These short checks did not find a
 network block. Earlier Helsinki rejections occurred before the pool update;
 the miner binary was unchanged for the successful retests.
+
+## Version 0.2.1
+
+The final Linux release binary passed all 12 CTest cases and the CUDA full-hash
+oracle (57,344 hashes). Live acceptance checks used that same binary:
+
+| Backend | Connection | Accepted | Rejected / stale / pending | Elapsed seconds |
+|---|---|---:|---|---:|
+| RTX 5090 | SV2 shared | 4 | 0 / 0 / 0 | 154.23 |
+| CPU, 8 threads | SV2 shared | 7 | 0 / 0 / 0 | 154.31 |
+| RTX 5090 | DATUM gateway | 4 | 0 / 0 / 0 | 150.02 |
+| CPU, 8 threads | DATUM gateway | 6 | 0 / 0 / 0 | 150.01 |
+| RX 7900 XTX | DATUM gateway | 34 | 0 / 0 / 0 | 180.03 |
+
+That is 55 accepted shares. The Docker image accepted another 4 CPU shares
+over 180 seconds with no rejected, stale or pending shares. The AMD check
+used the gateway's low-difficulty CPU port to collect validation samples;
+production GPU examples use the GPU port. CPU checks ran alongside other
+workloads and are acceptance tests, not isolated performance benchmarks.
+SV2 elapsed times include waiting for outstanding acknowledgements at shutdown.
+
+SV2 session tests verify that the network target is tracked independently from
+share difficulty and remains attached to each job. DATUM gateway jobs now
+supply the network target, and the live runs produced no false block-candidate
+messages. No actual network block was found.
+
+The Windows package passed its native CI tests, CPU protocol checks and
+standalone executable checks. Physical Windows GPUs and full installed
+HiveOS/mmpOS deployments remain untested; their launchers and API adapters
+have fixture coverage. Release checks preserve the exact tested executable
+when packaging each platform.

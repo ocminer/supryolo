@@ -9,6 +9,8 @@ Edit your address in `start.sh`, then use `PROTOCOL=datum ./start.sh` or `PROTOC
 
 [Connection and device examples](https://github.com/ocminer/supryolo/blob/v0.2.1/README.md) · [Installation guide](https://github.com/ocminer/supryolo/blob/v0.2.1/docs/RELEASES.md)
 
+Measured live rates: **RTX 5090 17.15 GH/s**, **RX 7900 XTX 5.784 GH/s**. Release validation accepted 55 NVIDIA/AMD/CPU shares plus 4 Docker shares, with no rejects. Windows passed its native CI checks.
+
 Packages: Linux NVIDIA/AMD/CPU, Windows OpenCL/CPU, HiveOS, mmpOS and Docker. Docker supports NVIDIA/CPU; use native Linux for AMD. Image: `ocminersupr/supryolo:0.2.1`.
 
 Linux requires x86-64 and glibc 2.35+. Physical Windows GPUs and complete installed HiveOS/mmpOS deployments have not been validated. Job Declaration and direct-node RPC mining remain deferred. A block-candidate message or accepted share is not a confirmed block reward.
