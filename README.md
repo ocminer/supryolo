@@ -41,11 +41,10 @@ The key below belongs to B2Pool; for another pool, obtain its own key.
 | GPU / FPGA | 14444 | 14445 | 128 |
 | CPU | 15555 | 15556 | 1 |
 
-**Solo status (2026-09-07):** the published v0.2.0 binary accepted all 3 GPU
-and 4 CPU test shares on **`de.b2pool.io`**, with no rejects. Use the **DE region**
-for SV2 solo for now. Helsinki still rejected GPU and CPU shares with
-`difficulty-too-low`; ORD has passed authentication but has not been tested
-for live solo share acceptance. These short checks did not find a network block.
+**Solo status (2026-09-07):** GPU and CPU solo share acceptance was verified
+on **DE, HEL and ORD** using the published v0.2.0 binary after the pool update.
+The checks recorded 28 accepted shares and no rejects; one additional ORD GPU
+share remained unconfirmed when the test stopped. No network block was found.
 
 The ports run on **`de.b2pool.io`**, **`hel.b2pool.io`** and **`ord.b2pool.io`**,
 with the same authority key. Select the region nearest your rig. For pool solo

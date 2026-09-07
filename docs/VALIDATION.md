@@ -167,9 +167,17 @@ HiveOS/mmpOS deployments remain outside these checks. The rig integrations are
 covered by launcher/API fixtures. SV2 uses Standard Channels only.
 
 Post-publication SV2 solo checks on 2026-09-07 used the unchanged release
-binary: DE accepted 3/3 GPU shares over 120 seconds and 4/4 CPU shares over
-150 seconds, with no rejected, stale or pending shares. Helsinki rejected
-2 GPU and 2 CPU shares with `difficulty-too-low`. All three regions passed
-authenticated connections on the six shared/solo ports; ORD solo has not
-been tested for live share acceptance. These results do not establish
-network block acceptance or all-region solo readiness.
+binary. After the pool update, all three regions accepted GPU and CPU work:
+
+| Region | GPU accepted | CPU accepted | Rejected | Unconfirmed at shutdown |
+|---|---:|---:|---:|---:|
+| DE | 3 | 4 | 0 | 0 |
+| HEL | 6 | 6 | 0 | 0 |
+| ORD | 4 | 5 | 0 | 1 (GPU) |
+
+DE GPU ran for 120 seconds; the other runs mined for 150 seconds. The miner
+waits up to five additional seconds for outstanding replies. The unconfirmed
+ORD share is not counted as accepted. All regions passed authenticated
+connections on the six shared/solo ports. These short checks did not find a
+network block. Earlier Helsinki rejections occurred before the pool update;
+the miner binary was unchanged for the successful retests.

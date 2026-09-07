@@ -1,0 +1,20 @@
+name: Update v0.2.0 release notes
+on:
+  push:
+    branches: [main]
+    paths: ['docs/RELEASE-NOTES-0.2.0.md']
+permissions:
+  contents: write
+concurrency:
+  group: release-notes-v0.2.0
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Update notes without changing release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit v0.2.0 --repo ocminer/supryolo --notes-file docs/RELEASE-NOTES-0.2.0.md
