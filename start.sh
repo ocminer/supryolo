@@ -8,7 +8,8 @@ PROTOCOL="${PROTOCOL:-sv1}"
 case "$PROTOCOL" in
   sv1) DEFAULT_POOL=stratum+tcp://de.b2pool.io:4444 ;;
   sv2) DEFAULT_POOL=stratum2+tcp://de.b2pool.io:14444 ;;
-  *) echo 'PROTOCOL must be sv1 or sv2' >&2; exit 2 ;;
+  datum) DEFAULT_POOL=stratum+tcp://de.b2pool.io:24444 ;;
+  *) echo 'PROTOCOL must be sv1, sv2 or datum' >&2; exit 2 ;;
 esac
 POOL="${POOL:-$DEFAULT_POOL}"
 auth=()
@@ -25,7 +26,7 @@ if [[ -z "$WALLET" || "$WALLET" == YOUR_BTCB2_ADDRESS ]]; then
 fi
 case "$MODE" in
   gpu) devices=(--no-cpu) ;;
-  cpu) devices=(--no-gpu); POOL="${POOL/:4444/:5555}"; POOL="${POOL/:14444/:15555}" ;;
+  cpu) devices=(--no-gpu); POOL="${POOL/:4444/:5555}"; POOL="${POOL/:14444/:15555}"; POOL="${POOL/:24444/:25555}" ;;
   mixed) devices=() ;;
   *) echo 'MODE must be gpu, cpu or mixed' >&2; exit 2 ;;
 esac

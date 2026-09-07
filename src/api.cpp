@@ -16,7 +16,7 @@ json api_snapshot(const DashboardView &v) {
     item["fan"]=d.sensors.fan_percent ? json(*d.sensors.fan_percent):json(nullptr);
     devices.push_back(item);
   }
-  return {{"version","0.2.0"},{"state",v.state},{"coin",v.coin},{"uptime",v.elapsed},
+  return {{"version","0.2.1"},{"state",v.state},{"coin",v.coin},{"uptime",v.elapsed},
     {"hashes",v.hashes},{"accepted",v.accepted},{"rejected",v.rejected},{"stale",v.stale},
     {"pending",v.pending},{"block_candidates",v.block_candidates},{"devices",devices}};
 }

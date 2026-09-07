@@ -129,7 +129,7 @@ std::string render_dashboard(const DashboardView &v, int width, int height, doub
     int top = 9, log_h = std::max(7, height / 3), log_y = height - log_h - 1,
         devices_h = log_y - top, left = std::max(38, width * 45 / 100);
     box(0, 0, left, top, "LINK // " + v.coin);
-    box(left, 0, width - left, top, "SUPRYOLO // 0.2.0");
+    box(left, 0, width - left, top, "SUPRYOLO // 0.2.1");
     put(2, 1, v.state + "  UP " + duration(v.elapsed), v.state == "MINING" ? bright : yellow,
         left - 4);
     put(2, 2, v.pool, cyan, left - 4);

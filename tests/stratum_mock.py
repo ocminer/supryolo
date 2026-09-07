@@ -30,7 +30,7 @@ def serve():
    while b'\n' in buf:
     line,buf=buf.split(b'\n',1);q=json.loads(line);method=q['method'];p=q['params']
     if method=='mining.subscribe':
-     assert p==['supryolo/0.2.0'];send({'id':q['id'],'result':[[],en,8],'error':None});subscribed=True
+     assert p==['supryolo/0.2.1'];send({'id':q['id'],'result':[[],en,8],'error':None});subscribed=True
     elif method=='mining.extranonce.subscribe':send({'id':q['id'],'result':True,'error':None})
     elif method=='mining.authorize':
      assert subscribed;send({'id':q['id'],'result':True,'error':None})

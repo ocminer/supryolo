@@ -1,17 +1,17 @@
 # Download and run
 
 Use the assets on the [GitHub release page](https://github.com/ocminer/supryolo/releases).
-Version 0.2.0 adds authenticated BTCB2 Stratum V2 Standard Channels. User agent: `supryolo/0.2.0`.
+Version 0.2.1 supports authenticated SV2 and pool-hosted DATUM gateway mining. User agent: `supryolo/0.2.1`.
 
 ## Which file?
 
 | Asset | Use |
 |---|---|
-| `supryolo-0.2.0-linux-x86_64.tar.gz` | Linux: combined NVIDIA CUDA, AMD OpenCL and CPU |
-| `supryolo-0.2.0.hiveos.tar.gz` | HiveOS Custom miner, with callbacks and API adapter |
-| `supryolo-0.2.0-mmpos.tar.gz` | mmpOS Custom miner, with launcher and stats adapter |
-| `supryolo-0.2.0-windows-x86_64.zip` | Windows: OpenCL GPU and AVX2/scalar CPU; built by GitHub Actions |
-| `supryolo-0.2.0-docker.tar.gz` | Offline Docker image; import with `gzip -dc FILE | docker load` |
+| `supryolo-0.2.1-linux-x86_64.tar.gz` | Linux: combined NVIDIA CUDA, AMD OpenCL and CPU |
+| `supryolo-0.2.1.hiveos.tar.gz` | HiveOS Custom miner, with callbacks and API adapter |
+| `supryolo-0.2.1-mmpos.tar.gz` | mmpOS Custom miner, with launcher and stats adapter |
+| `supryolo-0.2.1-windows-x86_64.zip` | Windows: OpenCL GPU and AVX2/scalar CPU; built by GitHub Actions |
+| `supryolo-0.2.1-docker.tar.gz` | Offline Docker image; import with `gzip -dc FILE | docker load` |
 | `SHA256SUMS` | SHA-256 checksums for release assets |
 
 Linux binaries require **x86-64 and glibc 2.35 or newer** (Ubuntu 22.04/24.04).
@@ -26,7 +26,7 @@ A kernel driver alone is insufficient; `--list-devices` must show your card.
 ## Linux: change your address and start
 
 ```sh
-tar -xzf supryolo-0.2.0-linux-x86_64.tar.gz
+tar -xzf supryolo-0.2.1-linux-x86_64.tar.gz
 cd supryolo
 nano start.sh
 ./start.sh
@@ -54,7 +54,7 @@ Create a flight sheet with your BTCB2 wallet and choose **Custom** miner:
 | Field | Value |
 |---|---|
 | Miner name | `supryolo` |
-| Installation URL | `https://github.com/ocminer/supryolo/releases/download/v0.2.0/supryolo-0.2.0.hiveos.tar.gz` |
+| Installation URL | `https://github.com/ocminer/supryolo/releases/download/v0.2.1/supryolo-0.2.1.hiveos.tar.gz` |
 | Wallet and worker template | `%WAL%.%WORKER_NAME%` |
 | Pool URL | `stratum+tcp://de.b2pool.io:4444` |
 | Pass | `x` |
@@ -83,7 +83,7 @@ validated; report integration issues with your OS/agent version.
 Create a **Custom miner** profile. Download URL:
 
 ```text
-https://github.com/ocminer/supryolo/releases/download/v0.2.0/supryolo-0.2.0-mmpos.tar.gz
+https://github.com/ocminer/supryolo/releases/download/v0.2.1/supryolo-0.2.1-mmpos.tar.gz
 ```
 
 Select your BTCB2 wallet and B2Pool GPU port 4444. In advanced arguments use:
@@ -104,19 +104,19 @@ mmpOS-agent deployment has not yet been validated.
 
 ## Docker
 
-Image: `ocminersupr/supryolo:0.2.0`. The versioned tag is recommended for rigs.
+Image: `ocminersupr/supryolo:0.2.1`. The versioned tag is recommended for rigs.
 The default command prints help; it never mines to a built-in wallet.
 For NVIDIA, install NVIDIA Container Toolkit on the host first.
 
 ```sh
-docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all ocminersupr/supryolo:0.2.0 \
+docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all ocminersupr/supryolo:0.2.1 \
   --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.rig1 --no-cpu
 ```
 
 Expose just host GPU 0 to the container:
 
 ```sh
-docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 ocminersupr/supryolo:0.2.0 \
+docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 ocminersupr/supryolo:0.2.1 \
   --url stratum+tcp://de.b2pool.io:4444 --user YOUR_BTCB2_ADDRESS.rig1 \
   --no-cpu --gpu-device 0
 ```
@@ -127,7 +127,7 @@ To use the simple starter script instead:
 
 ```sh
 docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all -e WALLET=YOUR_BTCB2_ADDRESS \
-  --entrypoint ./start.sh ocminersupr/supryolo:0.2.0
+  --entrypoint ./start.sh ocminersupr/supryolo:0.2.1
 ```
 
 This image supplies NVIDIA/CPU runtime dependencies. AMD rigs should use the
@@ -179,14 +179,55 @@ See the [SV2 command examples](../README.md#stratum-v2-encrypted-mining).
 Use `de.b2pool.io:14444` for GPUs and `de.b2pool.io:15555` for CPUs, with
 `stratum2+tcp://` and `--sv2-authority`. Linux, Windows, HiveOS, mmpOS and Docker
 packages support the same protocol. The `de`, `hel` and `ord` regions use the
-same authority key. After the pool update, the unchanged v0.2.0 binary passed
-GPU and CPU solo share acceptance checks on **DE, HEL and ORD** (2026-09-07):
-28 accepted, no rejects, and one additional ORD GPU share unconfirmed at test
-shutdown. The bundled documentation predates these follow-up checks.
+same authority key. GPU and CPU pool-solo acceptance has been verified in
+all three regions. See [validation notes](VALIDATION.md) for the test scope.
 Pool solo ports
 are `14445` for GPUs and `15556` for CPUs
 (`13334` for ASICs). Use the appropriate solo URL with the same miner arguments;
 a share acknowledgement does not mean a block or reward was found.
+
+## DATUM gateway setup
+
+B2Pool's hosted DATUM gateway supplies work to the miner over **Stratum V1**.
+No local Knots node or DATUM installation is needed. Currently **DE shared
+mining only**: GPU `stratum+tcp://de.b2pool.io:24444`, CPU
+`stratum+tcp://de.b2pool.io:25555`. Do not use the ASIC port 23333 for GPU/CPU
+mining. DATUM solo and HEL/ORD DATUM endpoints are not available.
+
+Linux after editing the wallet in `start.sh`:
+
+```sh
+PROTOCOL=datum ./start.sh --gpu-device 0,2
+PROTOCOL=datum MODE=cpu ./start.sh --cpu-threads 8
+```
+
+For HiveOS, use the GPU URL in the flight sheet; for mmpOS, use it in the pool
+field. Keep the normal wallet/worker and device arguments. No SV2 authority
+argument is needed. CPU-only rigs use port 25555 with `--no-gpu --cpu-threads 8`.
+
+Docker, GPU 0 only:
+
+```sh
+docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 \
+  ocminersupr/supryolo:0.2.1 --url stratum+tcp://de.b2pool.io:24444 \
+  --user YOUR_BTCB2_ADDRESS.rig1 --no-cpu --gpu-device 0 --tui
+```
+
+Windows PowerShell, OpenCL GPU 0:
+
+```powershell
+.\supryolo.exe --url stratum+tcp://de.b2pool.io:24444 --user YOUR_BTCB2_ADDRESS.rig1 --no-cpu --gpu-device 0 --tui
+```
+
+Windows CPU-only:
+
+```powershell
+.\supryolo.exe --url stratum+tcp://de.b2pool.io:25555 --user YOUR_BTCB2_ADDRESS.cpu1 --no-gpu --cpu-threads 8
+```
+
+For an independently operated gateway, replace the URL with its Stratum listener.
+Running that gateway yourself requires a suitable synced node; using the hosted
+B2Pool endpoints above does not. See the [README examples](../README.md#datum-gateway-mining).
 
 ## Building release packages
 

@@ -68,7 +68,7 @@ std::vector<json> Session::receive(std::span<const uint8_t> bytes) {
     Bytes remainder(handshake.begin() + 234, handshake.end());
     handshake.clear();
     phase = 1;
-    send(setup(host, port, "supryolo/0.2.0"));
+    send(setup(host, port, "supryolo/0.2.1"));
     return receive(remainder);
   }
   for (auto &frame : noise.receive(bytes)) {

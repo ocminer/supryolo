@@ -4,7 +4,7 @@ set -euo pipefail
 BIN="${1:?binary required}"
 OUT="${2:?output directory required}"
 FLAVOR="${3:-linux-x86_64}"
-VERSION=0.2.0
+VERSION=0.2.1
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 STAGE="$(mktemp -d)"

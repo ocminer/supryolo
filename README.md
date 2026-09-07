@@ -2,8 +2,8 @@
 
 A modular, source-available BTCB2 BLAKE2b miner by **ocminer**.
 
-**Version 0.2.0.** NVIDIA CUDA, AMD OpenCL, runtime-dispatched AVX2 CPU mining,
-BTCB2 Stratum V1 and encrypted Stratum V2, GPU monitoring/control and a Matrix-style terminal dashboard
+**Version 0.2.1.** NVIDIA CUDA, AMD OpenCL, runtime-dispatched AVX2 CPU mining,
+BTCB2 Stratum V1, encrypted Stratum V2 and pool-hosted DATUM gateways, GPU monitoring/control and a Matrix-style terminal dashboard
 are implemented. GPU and CPU shares have been accepted by B2Pool and checked
 independently. See [binary downloads, HiveOS, mmpOS, Docker and Windows setup](docs/RELEASES.md)
 for packages, requirements and platform validation limits.
@@ -16,7 +16,7 @@ Pool solo mining uses the same Stratum client, with the pool’s solo port.
 ![Matrix terminal demo; all displayed mining values are simulated](docs/assets/tui-demo.png)
 
 [Build](#build) · [Quick start](#quick-start) · [Performance](#performance) ·
-[Command examples](#command-examples) · [Common mistakes](#common-mistakes)
+[DATUM](#datum-gateway-mining) · [Command examples](#command-examples) · [Common mistakes](#common-mistakes)
 
 ## Downloads
 
@@ -31,7 +31,8 @@ glibc 2.35+; Windows currently uses OpenCL, not CUDA.
 
 ## Stratum V2 (encrypted mining)
 
-Version 0.2.0 adds BTCB2 Standard Channels with mandatory pool authentication.
+BTCB2 Standard Channels use mandatory pool authentication. Version 0.2.1
+also updates block-candidate tracking for SV2.
 Use **`stratum2+tcp://`**, including the `2`, and the pool's authority key.
 The key below belongs to B2Pool; for another pool, obtain its own key.
 
@@ -91,12 +92,64 @@ PROTOCOL=sv2 MODE=cpu ./start.sh --cpu-threads 8
 The existing Wallet and worker template stays the same. **mmpOS:** use the full
 SV2 URL as the pool and pass the same authority option in extra arguments.
 
-**Docker:** use the same arguments after `ocminersupr/supryolo:0.2.0` in the
+**Docker:** use the same arguments after `ocminersupr/supryolo:0.2.1` in the
 Docker examples below. **Windows:** replace `./supryolo` with `supryolo.exe` and
 put each command on one line (the shell continuation `\` is for Linux).
 
 An authentication error is a reason to check the key and endpoint; the miner
 never silently downgrades to an unencrypted connection.
+
+## DATUM gateway mining
+
+Connect to B2Pool's hosted DATUM gateway using **`stratum+tcp://`**. The gateway
+provides work and handles its node connection; you do **not** need to install
+Knots or a gateway on your mining rig. The miner-facing connection is Stratum
+V1, so use the usual wallet, worker and device options. Do not use the SV2 URL
+scheme or authority option for these ports.
+
+| Devices | B2Pool DATUM endpoint | Approximate minimum difficulty |
+|---|---|---:|
+| GPU | `stratum+tcp://de.b2pool.io:24444` | 128 |
+| CPU | `stratum+tcp://de.b2pool.io:25555` | 1 |
+| ASIC tier | `stratum+tcp://de.b2pool.io:23333` | 16384 |
+
+These endpoints provide **shared mining on DE only**. There is no DATUM solo
+endpoint; use the SV1 or SV2 solo ports for pool-solo mining. Small differences
+in the displayed difficulty, such as 127.998 instead of 128, are expected.
+
+**GPU 0 only (all other GPUs and the CPU stay unused):**
+
+```sh
+./supryolo --url stratum+tcp://de.b2pool.io:24444 \
+  --user YOUR_BTCB2_ADDRESS.rig1 --no-cpu --gpu-device 0 --tui
+```
+
+**CPU only:**
+
+```sh
+./supryolo --url stratum+tcp://de.b2pool.io:25555 \
+  --user YOUR_BTCB2_ADDRESS.cpu1 --no-gpu --cpu-threads 8 --tui
+```
+
+**Using `start.sh`:** edit its wallet address first.
+
+```sh
+PROTOCOL=datum ./start.sh --gpu-device 0,2
+PROTOCOL=datum MODE=cpu ./start.sh --cpu-threads 8
+```
+
+To use GPU power limits or temperature alarms, append the same options as for
+other pools, for example `--powerlimit 250 --gpu-temp-alarm 85`. Choose settings
+appropriate for your hardware; temperature alarms do not automatically throttle
+or stop mining. See [device and clock examples](#command-examples).
+
+**HiveOS:** use the GPU endpoint above as Pool URL, your wallet/worker template,
+and `--gpu-device 0,2` in Extra config arguments if needed. **mmpOS:** select the
+same pool URL and put device options in extra arguments. **Windows:** replace
+`./supryolo` with `supryolo.exe` and put the command on one line.
+
+A warning that extranonce subscription is unavailable is harmless on this
+gateway. Accepted shares are work acknowledgements, not confirmed block rewards.
 
 ## Build
 
@@ -183,7 +236,7 @@ Pool-solo still connects to a pool. Direct-node RPC solo is not implemented.
 change them to TLS URLs. Other endpoints can use `stratum+tls://` or
 `stratum+ssl://` when they support TLS; certificate verification is enabled.
 
-User agent: `supryolo/0.2.0`.
+User agent: `supryolo/0.2.1`.
 
 ## Performance
 

@@ -45,7 +45,7 @@ std::vector<unsigned> numbers(const std::string &text, unsigned maximum) {
 }
 void usage() {
   std::cout
-      << "supryolo/0.2.0\n"
+      << "supryolo/0.2.1\n"
          "Mine: --url stratum+tcp://de.b2pool.io:4444 --user ADDRESS.worker\n"
          "Devices: --gpu-device 0,1 (alias -d; default all), --no-gpu, --no-cpu\n"
          "GPU backend: --gpu-backend auto|cuda|opencl (auto: CUDA plus AMD OpenCL)\n"
@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
       else if (a == "--tui-demo")
         demo = true;
       else if (a == "--version") {
-        std::cout << "supryolo/0.2.0\n";
+        std::cout << "supryolo/0.2.1\n";
         return 0;
       } else if (a == "--help" || a == "-h")
         help = true;

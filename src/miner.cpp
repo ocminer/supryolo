@@ -442,7 +442,7 @@ int mine(const MineOptions &o) {
       {
         socket.send({{"id", 1},
                      {"method", "mining.subscribe"},
-                     {"params", json::array({"supryolo/0.2.0"})}});
+                     {"params", json::array({"supryolo/0.2.1"})}});
         socket.send(
             {{"id", 2}, {"method", "mining.extranonce.subscribe"}, {"params", json::array()}});
         socket.send({{"id", 3},

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(supryolo VERSION 0.2.0 LANGUAGES CXX)
+project(supryolo VERSION 0.2.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 option(YOLO_CUDA "Build the NVIDIA CUDA backend" ON)
 option(YOLO_OPENCL "Build the OpenCL GPU backend" ON)

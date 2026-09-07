@@ -25,6 +25,18 @@ with tempfile.TemporaryDirectory() as d:
     r = subprocess.run(['bash', str(p/'start.sh')], env=env, capture_output=True, text=True, check=True)
     a = json.loads(r.stdout)
     assert '--no-gpu' in a and 'stratum+tcp://de.b2pool.io:5555' in a
+    env.update(PROTOCOL='datum', MODE='gpu')
+    r = subprocess.run(['bash', str(p/'start.sh')], env=env, capture_output=True, text=True, check=True)
+    a = json.loads(r.stdout)
+    assert 'stratum+tcp://de.b2pool.io:24444' in a and '--no-cpu' in a and '--sv2-authority' not in a
+    env['MODE']='cpu'
+    r = subprocess.run(['bash', str(p/'start.sh')], env=env, capture_output=True, text=True, check=True)
+    a = json.loads(r.stdout)
+    assert 'stratum+tcp://de.b2pool.io:25555' in a and '--no-gpu' in a
+    env['POOL']='stratum+tcp://example.invalid:25555'
+    r = subprocess.run(['bash', str(p/'start.sh')], env=env, capture_output=True, text=True, check=True)
+    assert 'stratum+tcp://example.invalid:25555' in json.loads(r.stdout)
+    env.pop('POOL')
     env.update(CUSTOM_URL='de.b2pool.io:4444', CUSTOM_TEMPLATE='test.worker', CUSTOM_PASS='x',
                CUSTOM_USER_CONFIG='--gpu-device 1,0 --log-file "literal $(touch bad)"',
                CUSTOM_CONFIG_FILENAME=str(p/'flight.json'))
