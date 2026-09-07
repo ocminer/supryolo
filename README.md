@@ -41,6 +41,10 @@ The key below belongs to B2Pool; for another pool, obtain its own key.
 | GPU / FPGA | 14444 | 14445 | 128 |
 | CPU | 15555 | 15556 | 1 |
 
+**Solo status:** the new SV2 solo ports answer authenticated handshakes, but our
+live test encountered pool-side share rejections. Use **shared SV2** for this
+release while the pool investigates; the solo URLs below are for testing.
+
 The ports run on **`de.b2pool.io`**, **`hel.b2pool.io`** and **`ord.b2pool.io`**,
 with the same authority key. Select the region nearest your rig. For pool solo
 mining, use the solo port: GPU example `stratum2+tcp://hel.b2pool.io:14445`, CPU
