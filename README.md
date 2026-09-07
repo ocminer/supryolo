@@ -41,13 +41,15 @@ The key below belongs to B2Pool; for another pool, obtain its own key.
 | GPU / FPGA | 14444 | 14445 | 128 |
 | CPU | 15555 | 15556 | 1 |
 
-**Solo status:** the new SV2 solo ports answer authenticated handshakes, but our
-live test encountered pool-side share rejections. Use **shared SV2** for this
-release while the pool investigates; the solo URLs below are for testing.
+**Solo status (2026-09-07):** the published v0.2.0 binary accepted all 3 GPU
+and 4 CPU test shares on **`de.b2pool.io`**, with no rejects. Use the **DE region**
+for SV2 solo for now. Helsinki still rejected GPU and CPU shares with
+`difficulty-too-low`; ORD has passed authentication but has not been tested
+for live solo share acceptance. These short checks did not find a network block.
 
 The ports run on **`de.b2pool.io`**, **`hel.b2pool.io`** and **`ord.b2pool.io`**,
 with the same authority key. Select the region nearest your rig. For pool solo
-mining, use the solo port: GPU example `stratum2+tcp://hel.b2pool.io:14445`, CPU
+mining, use the solo port: GPU example `stratum2+tcp://de.b2pool.io:14445`, CPU
 example `stratum2+tcp://de.b2pool.io:15556`. Accepted solo shares are work reports,
 not block rewards; solo rewards require finding a block.
 

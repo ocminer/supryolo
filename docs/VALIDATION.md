@@ -165,3 +165,11 @@ block was found during the tests.
 Windows uses OpenCL and CPU; physical Windows GPU validation and installed
 HiveOS/mmpOS deployments remain outside these checks. The rig integrations are
 covered by launcher/API fixtures. SV2 uses Standard Channels only.
+
+Post-publication SV2 solo checks on 2026-09-07 used the unchanged release
+binary: DE accepted 3/3 GPU shares over 120 seconds and 4/4 CPU shares over
+150 seconds, with no rejected, stale or pending shares. Helsinki rejected
+2 GPU and 2 CPU shares with `difficulty-too-low`. All three regions passed
+authenticated connections on the six shared/solo ports; ORD solo has not
+been tested for live share acceptance. These results do not establish
+network block acceptance or all-region solo readiness.

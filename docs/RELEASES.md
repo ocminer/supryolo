@@ -179,9 +179,12 @@ See the [SV2 command examples](../README.md#stratum-v2-encrypted-mining).
 Use `de.b2pool.io:14444` for GPUs and `de.b2pool.io:15555` for CPUs, with
 `stratum2+tcp://` and `--sv2-authority`. Linux, Windows, HiveOS, mmpOS and Docker
 packages support the same protocol. The `de`, `hel` and `ord` regions use the
-same authority key. Shared SV2 is the validated release path. The new SV2 solo
-ports are reachable, but live share acceptance is still under pool-side
-investigation; use the following solo endpoints for testing only. Pool solo ports are `14445` for GPUs and `15556` for CPUs
+same authority key. After publication, the unchanged v0.2.0 binary accepted
+3/3 GPU and 4/4 CPU solo shares on **DE**, with no rejects (2026-09-07). Use
+**`de.b2pool.io` for SV2 solo** for now: Helsinki still returned
+`difficulty-too-low` for both backends; ORD has only passed authentication.
+The bundled documentation predates these follow-up checks. Pool solo ports
+are `14445` for GPUs and `15556` for CPUs
 (`13334` for ASICs). Use the appropriate solo URL with the same miner arguments;
 a share acknowledgement does not mean a block or reward was found.
 
