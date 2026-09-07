@@ -53,6 +53,7 @@ example `stratum2+tcp://de.b2pool.io:15556`. Accepted solo shares are work repor
 not block rewards; solo rewards require finding a block.
 
 Extended Channels and Job Declaration are not supported by this miner release.
+Job Declaration with a local Knots node is deferred; see the [roadmap](docs/TODO.md).
 SV1 remains available.
 A password is not sent by the SV2 Standard Channel protocol; use your payout
 address and worker name as the identity.
