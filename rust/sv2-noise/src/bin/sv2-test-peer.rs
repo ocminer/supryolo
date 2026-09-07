@@ -91,7 +91,7 @@ fn prev(id: u32) -> Vec<u8> {
     p.extend(id.to_le_bytes());
     p.extend([0; 32]);
     p.extend(10u32.to_le_bytes());
-    p.extend(0x190f0b50u32.to_le_bytes());
+    p.extend((if id == 1 { 0x190f0b50u32 } else { 0x190e0000u32 }).to_le_bytes());
     p
 }
 fn session_fixture(input: &mut impl Read, out: &mut impl Write, e: &mut noise_sv2::NoiseEngine) {

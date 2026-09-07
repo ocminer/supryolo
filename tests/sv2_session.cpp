@@ -39,6 +39,9 @@ int main() {
   check(bool(s.current));
   auto first = *s.current;
   check(s.valid(first));
+  check(first.network_target == compact_target("190f0b50"));
+  check(meets(first.work.target, first.work.target));
+  check(!meets(first.work.target, first.network_target));
   for (uint32_t i = 10; i < 13; ++i)
     s.submit(first, i, i);
   auto events = next();
@@ -57,13 +60,18 @@ int main() {
   check(s.current->generation == first.generation);
   next();
   check(s.current->work.target == first.work.target);
+  check(s.current->network_target == first.network_target);
   next();
   auto second = *s.current;
+  check(second.network_target == compact_target("190e0000"));
+  check(first.network_target == compact_target("190f0b50"));
   check(!s.valid(first) && s.valid(second) && second.work.target < first.work.target);
   next();
   auto third = *s.current;
+  check(third.network_target == second.network_target);
   check(s.valid(second) && s.valid(third) && third.time32 == 20);
   next();
   check(s.current->work.target == third.work.target);
+  check(s.current->network_target == third.network_target);
   std::cerr << "SV2 future jobs, target snapshots, stale epochs and delayed batch errors passed\n";
 }

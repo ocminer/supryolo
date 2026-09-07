@@ -31,6 +31,7 @@ void Session::activate(Stored &s, uint32_t time) {
   j.time32 = time;
   j.work.header = standard_work(previous, s.wire.root, extra, time);
   j.work.target = target;
+  j.network_target = network_target;
   // BTCB2 minimum proof: top 32 digest bits must be zero even at an easy target.
   Hash maximum;
   maximum.fill(255);
@@ -103,10 +104,15 @@ std::vector<json> Session::receive(std::span<const uint8_t> bytes) {
       require(i != jobs.end(), "SV2 activation of unknown job");
       require(std::all_of(m->hash.begin(), m->hash.begin() + 6, [](auto b) { return b == 0; }),
               "pool sent non-hidden BTCB2 prevhash");
+      // nBits is the consensus target, independent of the channel share target.
+      const std::array<uint8_t, 4> compact = {uint8_t(m->nbits >> 24), uint8_t(m->nbits >> 16),
+                                             uint8_t(m->nbits >> 8), uint8_t(m->nbits)};
+      const auto next_network_target = compact_target(hex(compact));
       auto selected = i->second;
       jobs.clear();
       ++epoch;
       previous = m->hash;
+      network_target = next_network_target;
       have_previous = true;
       auto [at, _] = jobs.emplace(m->job, std::move(selected));
       activate(at->second, m->ntime);

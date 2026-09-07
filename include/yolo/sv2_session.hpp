@@ -20,7 +20,7 @@ class Session {
   uint32_t channel = 0, group = 0;
   uint64_t generation = 0, epoch = 0;
   uint32_t last_ack = 0, last_sent = 0;
-  Hash target{}, previous{};
+  Hash target{}, network_target{}, previous{};
   bool have_previous = false;
   struct Stored {
     NewJob wire;
