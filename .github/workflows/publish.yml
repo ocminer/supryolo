@@ -1,4 +1,4 @@
-name: Publish v0.2.0 release
+name: Publish v0.2.1 release
 on:
   workflow_dispatch:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: write
   actions: read
 concurrency:
-  group: publish-v0.2.0
+  group: publish-v0.2.1
   cancel-in-progress: false
 jobs:
   publish:
@@ -17,17 +17,17 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: v0.2.0
+          ref: v0.2.1
       - name: Retrieve the exact GPU-validated Linux binary
         run: |
           set -euo pipefail
-          IMAGE=ocminersupr/supryolo@sha256:094815c6fde3f410fce6d9b5f7d4b303795c41cb5e0f87b6e46fa8bf08f2b905
+          IMAGE=ocminersupr/supryolo@sha256:cb9a983201f2f32f6ea340a392e3e4b45f607d4e4661c637c5dd96acc8974a4d
           docker pull "$IMAGE"
           CID=$(docker create --entrypoint /bin/true "$IMAGE")
           trap 'docker rm -f "$CID" >/dev/null' EXIT
           mkdir -p dist/verified
           docker cp "$CID:/opt/supryolo/." dist/verified/
-          echo 'd31bf290ba76329329e937a95f72cbd64247554b976d3e4e042fd9d1a8bf4d43  dist/verified/supryolo' | sha256sum -c -
+          echo '6b63c586bc5c6fa59dd8abed3ff66a7861583b41872d140a5a54e19fa164cc48  dist/verified/supryolo' | sha256sum -c -
           dist/verified/supryolo --version
           python3 tests/terminal.py dist/verified/supryolo
           python3 tests/stratum_mock.py dist/verified/supryolo --cpu
@@ -44,20 +44,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh run download 34101049543 --repo ocminer/supryolo --name supryolo-windows --dir dist
+          gh run download 34123103264 --repo ocminer/supryolo --name supryolo-windows --dir dist
           cd dist
           sha256sum -c WINDOWS-SHA256SUMS
           cd ..
-          python3 scripts/refresh-windows-docs.py dist/supryolo-0.2.0-windows-x86_64.zip
+          python3 scripts/refresh-windows-docs.py dist/supryolo-0.2.1-windows-x86_64.zip
       - name: Export the tested public Docker image
         run: |
           set -euo pipefail
-          IMAGE=ocminersupr/supryolo@sha256:094815c6fde3f410fce6d9b5f7d4b303795c41cb5e0f87b6e46fa8bf08f2b905
+          IMAGE=ocminersupr/supryolo@sha256:cb9a983201f2f32f6ea340a392e3e4b45f607d4e4661c637c5dd96acc8974a4d
           docker pull "$IMAGE"
-          docker tag "$IMAGE" ocminersupr/supryolo:0.2.0
+          docker tag "$IMAGE" ocminersupr/supryolo:0.2.1
           docker run --rm --entrypoint sha256sum "$IMAGE" /opt/supryolo/supryolo | \
-            grep '^d31bf290ba76329329e937a95f72cbd64247554b976d3e4e042fd9d1a8bf4d43 '
-          docker save ocminersupr/supryolo:0.2.0 | gzip -1 > dist/supryolo-0.2.0-docker.tar.gz
+            grep '^6b63c586bc5c6fa59dd8abed3ff66a7861583b41872d140a5a54e19fa164cc48 '
+          docker save ocminersupr/supryolo:0.2.1 | gzip -1 > dist/supryolo-0.2.1-docker.tar.gz
       - name: Publish assets and checksums
         env:
           GH_TOKEN: ${{ github.token }}
@@ -65,30 +65,5 @@ jobs:
           set -euo pipefail
           cd dist
           sha256sum *.tar.gz *.zip > SHA256SUMS
-          cat > release-notes.md <<'NOTES'
-          Authenticated BTCB2 Stratum V2 mining is now available alongside Stratum V1.
-
-          - Linux: NVIDIA CUDA, AMD OpenCL and AVX2/scalar CPU in one executable.
-          - Windows: OpenCL/CPU package built and tested by GitHub Actions.
-          - HiveOS and mmpOS packages include the monitoring API and launchers.
-          - Docker: `ocminersupr/supryolo:0.2.0`, plus an offline image archive.
-          - The same device selection, GPU controls and Matrix terminal work with SV2.
-
-          **Start with SV2:** edit the address in `start.sh`, then run `PROTOCOL=sv2 ./start.sh`. For CPU-only mining use `PROTOCOL=sv2 MODE=cpu ./start.sh --cpu-threads 8`.
-
-          GPU endpoint: `stratum2+tcp://de.b2pool.io:14444`. CPU endpoint: `stratum2+tcp://de.b2pool.io:15555`. Direct commands require `--sv2-authority` with the pool's key; see the examples below. The regional endpoints use the same pin.
-
-          [Installation and platform requirements](https://github.com/ocminer/supryolo/blob/v0.2.0/docs/RELEASES.md) · [SV2 commands and pool key](https://github.com/ocminer/supryolo/blob/v0.2.0/README.md#stratum-v2-encrypted-mining)
-
-          The newly opened SV2 solo ports are still being validated after pool-side share rejections. Use shared SV2 for this release.
-
-          Measured live rates: **RTX 5090 17.14 GH/s**, **RX 7900 XTX 5.713 GH/s**. The final Linux build passed 12 tests, the GPU hash oracle and 18/18 live NVIDIA/AMD/CPU shares. The Docker image accepted another 2/2 shares. Windows passed its native tests and standalone executable checks.
-
-          Linux requires x86-64/glibc 2.35+ and an appropriate GPU driver. Docker supports NVIDIA/CPU; use native Linux for AMD. Physical Windows GPUs and complete installed HiveOS/mmpOS deployments have not been validated. SV2 uses Standard Channels; Extended Channels and Job Declaration are not included. Accepted shares are not confirmed network blocks.
-
-          User agent: **`supryolo/0.2.0`**. Private mining with profits is permitted; commercial use requires prior written permission from ocminer. See LICENSE; dependencies retain their original terms.
-
-          Verify downloads against `SHA256SUMS`. Import the offline Docker archive with `gzip -dc supryolo-0.2.0-docker.tar.gz | docker load`.
-          NOTES
-          gh release create v0.2.0 --repo ocminer/supryolo --verify-tag --title 'supryolo v0.2.0' \
-            --notes-file release-notes.md *.tar.gz *.zip SHA256SUMS
+          gh release create v0.2.1 --repo ocminer/supryolo --verify-tag --title 'supryolo v0.2.1' \
+            --notes-file ../docs/RELEASE-NOTES-0.2.1.md *.tar.gz *.zip SHA256SUMS
